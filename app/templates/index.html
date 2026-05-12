@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>AI Job Agent</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 2em; }
+        .section { margin-bottom: 2em; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+        th { background: #f0f0f0; }
+        .apply-btn {
+            display: inline-block;
+            padding: 6px 18px;
+            background: #007bff;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            text-decoration: none;
+            font-weight: bold;
+            transition: background 0.2s;
+        }
+        .apply-btn:hover {
+            background: #0056b3;
+        }
+        .apply-btn.disabled,
+        .apply-btn:disabled {
+            background: #ccc !important;
+            color: #888 !important;
+            border: 1px solid #aaa !important;
+            cursor: not-allowed;
+        }
+        .common { background: #e0ffe0; }
+    </style>
+</head>
+<body>
+    <h1>AI Job Agent</h1>
+    
+    <div style="text-align: right; margin-bottom: 20px;">
+        <a href="/auto-apply" style="background-color: #28a745; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 1.1em;">🤖 Go to Auto-Apply Bot</a>
+    </div>
+
+    <form method="post">
+        <div class="section">
+            <label for="designation">Designation (Title)</label>
+            <input type="text" id="designation" name="designation" size="20" value="{{ designation_filter if designation_filter else '' }}">
+            <label for="skills">Skills (comma-separated):</label>
+            <input type="text" id="skills" name="skills" value="{{ ', '.join(skills) }}" size="60">
+            <label for="location">&nbsp;Location filter:</label>
+            <input type="text" id="location" name="location" value="{{ location_filter if location_filter else '' }}" size="20">
+            <label for="years">&nbsp;Years of experience:</label>
+            <input type="number" id="years" name="years" min="0" step="1" value="{{ experience_years if experience_years is not none else '' }}" style="width: 80px;">
+            <label for="posted_within_days">&nbsp;Posted within (days):</label>
+            <input type="number" id="posted_within_days" name="posted_within_days" min="0" step="1" value="{{ posted_within_days if posted_within_days is not none else '' }}" style="width: 90px;">
+            <button type="submit">Fetch Jobs</button>
+        </div>
+    </form>
+
+    {% if jobs %}
+    <div class="section">
+        <h2>Fetched Jobs (Total: {{ jobs|length }})</h2>
+        
+                <table id="jobsTable">
+                        <tr>
+                                <th>Match %</th><th>Designation</th><th>Company</th><th>Location</th><th>Posted</th><th>Experience</th><th>Skills</th><th>Source</th><th>Apply</th>
+                        </tr>
+                        
+                        {% for job in jobs %}
+                        <tr>
+                                <td>{{ job.match_score }}%</td>
+                                <td>{{ job.title }}</td>
+                                <td>{{ job.company }}</td>
+                                <td>{{ job.location if job.location else '' }}</td>
+                                <td>
+                                    {% if job.posted_date %}
+                                        {{ job.posted_date }}{% if job.posted_days_ago is not none %} ({{ job.posted_days_ago }}d ago){% endif %}
+                                    {% elif job.posted_days_ago is not none %}
+                                        {{ job.posted_days_ago }}d ago
+                                    {% else %}
+                                        N/A
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if job.experience_min is not none and job.experience_max is not none %}
+                                        {% if job.experience_min != job.experience_max %}
+                                            {{ job.experience_min }}-{{ job.experience_max }} yrs
+                                        {% else %}
+                                            {{ job.experience_min }} yrs
+                                        {% endif %}
+                                    {% elif job.experience_min is not none %}
+                                        {{ job.experience_min }} yrs
+                                    {% elif job.experience_max is not none %}
+                                        {{ job.experience_max }} yrs
+                                    {% else %}
+                                        N/A
+                                    {% endif %}
+                                </td>
+                                <td>{{ job.skills|join(', ') }}</td>
+                                <td>{{ job.source }}</td>
+                                <td>
+                                    {% if job.is_applied %}
+                                        <span class="apply-btn" style="background: #28a745; cursor: default; border: 1px solid #218838;">Applied</span>
+                                    {% else %}
+                                        <form action="{{ url_for('apply_job') }}" method="post" target="_blank" style="display:inline;">
+                                            <input type="hidden" name="title" value="{{ job.title }}">
+                                            <input type="hidden" name="company" value="{{ job.company }}">
+                                            <input type="hidden" name="location" value="{{ job.location if job.location else '' }}">
+                                            <input type="hidden" name="source" value="{{ job.source }}">
+                                            <input type="hidden" name="url" value="{{ job.url if job.url else '#' }}">
+                                            <button
+                                                type="submit"
+                                                class="apply-btn{% if not job.url %} disabled{% endif %}"
+                                                {% if not job.url %}disabled{% endif %}
+                                                onclick="setTimeout(() => window.location.reload(), 1000)"
+                                            >Apply</button>
+                                        </form>
+                                    {% endif %}
+                                </td>
+                        </tr>
+                        {% endfor %}
+                </table>
+    </div>
+    {% endif %}
+
+    {% if did_submit and not jobs %}
+    <div class="section">
+        <p><b>No jobs found.</b> Try clearing filters (Years of experience / Posted within) or changing skills/location.</p>
+    </div>
+    {% endif %}
+
+    {% if summary %}
+    <div class="section">
+        <h2>Job Count per Company and Skill</h2>
+        <table>
+            <tr><th>Company</th><th>Skills (Count)</th></tr>
+            {% for company, skills in summary.items() %}
+            <tr>
+                <td>{{ company }}</td>
+                <td>
+                    {% for skill, count in skills.items() %}
+                        {{ skill }} ({{ count }}){% if not loop.last %}, {% endif %}
+                    {% endfor %}
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+    {% endif %}
+
+    {% if common_jobs %}
+    <div class="section">
+        <h2>Common Jobs (LinkedIn & Naukri)</h2>
+        <table>
+            <tr><th>Designation</th><th>Company</th><th>Sources</th></tr>
+            {% for job in common_jobs %}
+            <tr class="common">
+                <td>{{ job.title }}</td>
+                <td>{{ job.company }}</td>
+                <td>{{ job.sources|join(' & ') }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+    {% endif %}
+
+    <script>
+    function filterJobs() {
+        var table = document.getElementById("jobsTable");
+        var tr = table.getElementsByTagName("tr");
+        
+        // Get all filter inputs from the filter-row
+        var filterRow = table.getElementsByClassName("filter-row")[0];
+        if (!filterRow) return;
+        var inputs = filterRow.getElementsByTagName("input");
+        
+        // Start from row 2 (index 2) because 0 is headers and 1 is filters
+        for (var i = 2; i < tr.length; i++) {
+            if (tr[i].classList.contains("common")) {
+                // Ignore the common jobs table if it shares logic, but here we only filter jobsTable
+            }
+            
+            var displayRow = true;
+            var td = tr[i].getElementsByTagName("td");
+            
+            // Loop through each column that has a filter input
+            for (var j = 0; j < inputs.length; j++) {
+                var filterValue = inputs[j].value.toUpperCase();
+                if (filterValue && td[j]) {
+                    var txtValue = td[j].textContent || td[j].innerText;
+                    if (txtValue.toUpperCase().indexOf(filterValue) === -1) {
+                        displayRow = false; // Mismatch on this column
+                        break;
+                    }
+                }
+            }
+            
+            tr[i].style.display = displayRow ? "" : "none";
+        }
+    }
+    </script>
+</body>
+</html>

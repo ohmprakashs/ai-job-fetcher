@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Auto Apply Bot Configuration</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 2em; background-color: #f9f9f9; }
+        .card { background: white; padding: 2em; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 600px; margin: 0 auto; }
+        .form-group { margin-bottom: 1.5em; }
+        label { display: block; font-weight: bold; margin-bottom: 0.5em; }
+        input[type="text"], select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        .btn-launch { background: #28a745; color: white; padding: 10px 20px; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; font-weight: bold; width: 100%; }
+        .btn-launch:hover { background: #218838; }
+        .alert { background: #d4edda; color: #155724; padding: 15px; border-radius: 4px; border: 1px solid #c3e6cb; margin-bottom: 1.5em; font-weight: bold; }
+        a.back-link { display: inline-block; margin-top: 15px; color: #007bff; text-decoration: none; }
+        a.back-link:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>Configure Auto-Apply Bot</h1>
+        <p>The bot will use your current Google Chrome login session to intelligently auto-apply to unapplied jobs in your database that match the criteria below.</p>
+        
+        {% if message %}
+        <div class="alert">
+            {{ message }}
+        </div>
+        {% endif %}
+
+        <form method="post">
+            <div class="form-group">
+                <label>Platform Target:</label>
+                <select name="platform">
+                    <option value="all">All (LinkedIn & Naukri)</option>
+                    <option value="naukri">Naukri Only</option>
+                    <option value="linkedin">LinkedIn Only</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>Required Designation / Title:</label>
+                <input type="text" name="designation" placeholder="e.g. DevOps Engineer (leave empty to apply to all titles)">
+            </div>
+            
+            <div class="form-group">
+                <label>Required Skills (comma-separated):</label>
+                <input type="text" name="skills" placeholder="e.g. Python, Docker, Kubernetes (leave empty for no skill filter)">
+            </div>
+            
+            <button type="submit" class="btn-launch">▶ Launch Headless Bot</button>
+        </form>
+        
+        <a href="/" class="back-link">← Back to Dashboard</a>
+    </div>
+</body>
+</html>

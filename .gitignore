@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.venv/
+playwright_profile/
+jobs.db
+.env
+playwright_profile_debug/
