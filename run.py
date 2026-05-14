@@ -2,6 +2,9 @@ import os
 import sys
 import threading
 from apscheduler.schedulers.background import BackgroundScheduler
+from dotenv import load_dotenv
+
+load_dotenv()
 
 repo_dir = os.path.dirname(os.path.abspath(__file__))
 app_dir = os.path.join(repo_dir, "app")
@@ -32,7 +35,7 @@ def main() -> None:
     import ui  # type: ignore
 
     try:
-        ui.app.run(debug=True, use_reloader=False) # use_reloader=False prevents scheduler running twice
+        ui.app.run(host="0.0.0.0", port=5001, debug=True, use_reloader=False) # use_reloader=False prevents scheduler running twice
     finally:
         scheduler.shutdown()
 

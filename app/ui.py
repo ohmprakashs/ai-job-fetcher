@@ -1,10 +1,11 @@
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, render_template, request, redirect, url_for, send_file
 from job_agent import JobAIAgent
 from job_fetcher import find_common_jobs
-from job_db import init_db, mark_job_applied, get_job_applications_status
+from job_db import init_db, mark_job_applied, get_job_applications_status, get_job_by_id
 import os
 import threading
 from auto_apply_bot import run_auto_apply
+from cv_generator import build_tailored_pdf
 
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -99,6 +100,20 @@ def apply_job():
     
     return redirect(url_for('index'))
 
+@app.route('/generate-cv/<int:job_id>', methods=['GET'])
+def generate_cv(job_id):
+    job = get_job_by_id(job_id)
+    if not job:
+        return "Job not found.", 404
+        
+    base_pdf_path = os.path.join(_BASE_DIR, "..", "sample_cv.pdf")
+    output_pdf_path = os.path.join(_BASE_DIR, "..", f"tailored_cv_{job_id}.pdf")
+    
+    try:
+        build_tailored_pdf(job, base_pdf_path, output_pdf_path)
+        return send_file(output_pdf_path, as_attachment=True, download_name=f"Tailored_CV_{job['company']}.pdf")
+    except Exception as e:
+        return f"Failed to generate CV: {str(e)}", 500
 
 
 @app.route('/auto-apply', methods=['GET', 'POST'])

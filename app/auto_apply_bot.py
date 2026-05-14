@@ -23,7 +23,8 @@ def get_unapplied_jobs():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
-    c.execute("SELECT * FROM jobs WHERE is_applied = 0 AND url IS NOT NULL AND url != '' LIMIT 5")
+    # ONLY pull Naukri positions for the LLM! LinkedIn has heavy anti-bot blocking
+    c.execute("SELECT * FROM jobs WHERE is_applied = 0 AND source='Naukri' AND url IS NOT NULL AND url != '' LIMIT 3")
     jobs = [dict(r) for r in c.fetchall()]
     conn.close()
     return jobs
@@ -63,8 +64,8 @@ async def process_job(job, browser, llm_model):
     )
     
     try:
-        # Run the autonomous LLM browser agent
-        history = await agent.run()
+        # Give the agent a maximum of 3 steps to figure it out, then stop.
+        history = await agent.run(max_steps=3)
         result_text = str(history).lower()
         
         # Super basic validation based on LLM's final state response
@@ -92,10 +93,11 @@ async def async_run_auto_apply():
     # Initialize Claude 3.5 Sonnet (Best model for UI parsing)
     llm = CustomChatAnthropic(model_name="claude-3-5-sonnet-20241022", temperature=0.0)
 
-    # Boot the browser reusing our persistent login session!
+    # Launch its own Chrome window using the saved playwright profile so you are still logged in
     browser = Browser(browser_profile=BrowserProfile(
         headless=False,
         executable_path="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        user_data_dir=USER_DATA_DIR,
     ))
 
     for job in jobs:

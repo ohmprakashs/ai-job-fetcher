@@ -92,7 +92,7 @@ class JobAIAgent:
             filtered_jobs.append(job)
             
         # Sort jobs by match_score descending
-        filtered_jobs.sort(key=lambda j: j.get('match_score', 0), reverse=True)
+        filtered_jobs.sort(key=lambda j: (j.get('posted_days_ago') if j.get('posted_days_ago') is not None else 9999, -j.get('match_score', 0)))
             
         self.jobs = filtered_jobs
         self.summary = self._summarize_jobs()

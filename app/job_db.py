@@ -28,7 +28,7 @@ def init_db():
     # Run migrations if table already existed without new columns
     for col, ctype in [("url", "TEXT"), ("is_applied", "INTEGER DEFAULT 0"), 
                        ("experience_min", "INTEGER"), ("experience_max", "INTEGER"),
-                       ("posted_days_ago", "INTEGER"), ("posted_date", "TEXT")]:
+                       ("posted_days_ago", "INTEGER"), ("posted_date", "TEXT"), ("apply_type", "TEXT")]:
         try:
             c.execute(f"ALTER TABLE jobs ADD COLUMN {col} {ctype}")
         except sqlite3.OperationalError:
@@ -91,6 +91,21 @@ def get_job_applications_status():
         c.execute("SELECT title, company, location, source, is_applied FROM jobs")
         rows = c.fetchall()
         return {(r[0], r[1], r[2], r[3]): bool(r[4]) for r in rows}
+    finally:
+        conn.close()
+
+def get_job_by_id(job_id):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    try:
+        c.execute("SELECT * FROM jobs WHERE id = ?", (job_id,))
+        row = c.fetchone()
+        if not row:
+            return None
+        job = dict(row)
+        job['skills'] = job['skills'].split(',') if job['skills'] else []
+        return job
     finally:
         conn.close()
 
