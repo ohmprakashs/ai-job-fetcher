@@ -158,14 +158,6 @@ def _job_matches_posted_within(job: dict, within_days: int) -> bool:
         return int(days_ago) <= within_days
     except Exception:
         return False
-    if exp_min is None:
-        exp_min = exp_max
-    if exp_max is None:
-        exp_max = exp_min
-    try:
-        return int(exp_min) <= required_years <= int(exp_max)
-    except Exception:
-        return False
 
 
 # --- Naukri.com Fetcher ---
@@ -177,7 +169,7 @@ def fetch_naukri_jobs_playwright(skills, location="", designation=""):
     Fetch jobs from Naukri.com matching the given skills using Playwright + stealth.
     """
     jobs = []
-    keyword = designation if designation else _build_search_keyword(skills)
+    keyword = f'{designation} {_build_search_keyword(skills)}'.strip()
     loc_path = f"-in-{location.strip().replace(' ', '-').lower()}" if location else ""
     naukri_url = f"https://www.naukri.com/{keyword.replace(' ', '-')}-jobs{loc_path}"
 
@@ -296,7 +288,7 @@ def fetch_linkedin_jobs(skills, location="", designation=""):
     Checks Easy Apply and Apply on company site using f_AL parameter.
     """
     jobs = []
-    keyword = designation if designation else _build_search_keyword(skills)
+    keyword = f'{designation} {_build_search_keyword(skills)}'.strip()
     loc_param = f"&location={location.strip().replace(' ', '%20')}" if location else ""
     base_url = f"https://www.linkedin.com/jobs/search/?keywords={keyword.replace(' ', '%20')}{loc_param}&sortBy=DD"
     headers = {
