@@ -3,3 +3,10 @@ requests
 beautifulsoup4
 playwright
 playwright-stealth
+apscheduler
+python-dotenv
+pypdf
+fpdf2
+langchain-anthropic
+langchain-core
+browser-use

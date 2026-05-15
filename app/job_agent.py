@@ -35,15 +35,22 @@ class JobAIAgent:
             if self.location:
                 job_loc = str(job.get("location", "")).lower()
                 search_locs = [l.strip() for l in self.location.split(",") if l.strip()]
+                
+                # Expand search locations with synonyms (e.g. Bangalore <-> Bengaluru)
+                expanded_locs = set(search_locs)
+                for loc in search_locs:
+                    if "bangalore" in loc or "bengaluru" in loc:
+                        expanded_locs.update(["bangalore", "bengaluru"])
+                        
                 # If none of the search locs are in the job location, filter it out
-                if search_locs and not any(l in job_loc for l in search_locs):
+                if expanded_locs and not any(l in job_loc for l in expanded_locs):
                     continue
                 
             # Check skills carefully: either the skill is in the job title or explicitly in the tags
             # We want to match at least ONE skill strongly.
             if self.skills:
                 job_title_lower = str(job.get("title", "")).lower()
-                job_skills_lower = [s.lower() for s in job.get("skills", [])]
+                job_skills_lower = [s.lower().strip() for s in job.get("skills", [])]
                 
                 matched = False
                 for req_skill in self.skills:
@@ -65,31 +72,59 @@ class JobAIAgent:
                 if not _job_matches_posted_within(job, self.posted_within_days):
                     continue
                     
-            # Check designation strictly against Job Title
+            # Check designation flexibly against Job Title
             if self.designation:
                 job_title = str(job.get("title", "")).lower()
-                if self.designation not in job_title:
+                desig_parts = self.designation.replace(',', ' ').split()
+                # Ensure all words from designation are found in the title
+                if not all(part in job_title for part in desig_parts):
                     continue
 
             # Calculate match score (Resume vs JD)
             score = 0
             job_title_lower = str(job.get("title", "")).lower()
-            job_skills_lower = [str(s).lower() for s in job.get("skills", [])]
+            job_skills_lower = [str(s).lower().strip() for s in job.get("skills", [])]
             
             if self.skills:
                 matches = 0
-                for skill in self.skills:
-                    if skill in job_skills_lower or skill in job_title_lower:
-                        matches += 1
-                score = int((matches / len(self.skills)) * 100)
+                # What the job requires (from tags)
+                job_required_skills = [s for s in job_skills_lower if len(s) > 1]
+                
+                # If LinkedIn or job has no skills, we evaluate based on how many user skills match the title
+                if not job_required_skills:
+                    # just see if at least one user skill is in title.
+                    for skill in self.skills:
+                        if skill in job_title_lower:
+                            matches += 1
+                    # Give it a decent baseline if it matches title well
+                    score = min(100, int((matches / max(1, len(self.skills))) * 100) + 50) if matches > 0 else 0
+                else:
+                    # Normal Naukri job with tags
+                    # Does the job have the user's skill?
+                    for user_skill in self.skills:
+                        has_it = False
+                        for req_skill in job_required_skills:
+                            if user_skill in req_skill or req_skill in user_skill:
+                                has_it = True
+                                break
+                        if not has_it and user_skill in job_title_lower:
+                            has_it = True
+                        if has_it:
+                            matches += 1
+                    
+                    score = int((matches / len(self.skills)) * 100)
                 
             # Bonus score if designation strictly matches 
-            if self.designation and self.designation in job_title_lower:
+            if self.designation and all(p in job_title_lower for p in self.designation.replace(",", " ").split()):
                 score += min(100 - score, 20)  # Max score is 100
                 
             job['match_score'] = score
                     
-            filtered_jobs.append(job)
+            if not self.skills:
+                job['match_score'] = 100
+                filtered_jobs.append(job)
+            elif job["match_score"] >= 70:
+                filtered_jobs.append(job)
             
         # Sort jobs by match_score descending
         filtered_jobs.sort(key=lambda j: (j.get('posted_days_ago') if j.get('posted_days_ago') is not None else 9999, -j.get('match_score', 0)))

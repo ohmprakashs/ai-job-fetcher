@@ -39,19 +39,64 @@
         <a href="/auto-apply" style="background-color: #28a745; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 1.1em;">🤖 Go to Auto-Apply Bot</a>
     </div>
 
-    <form method="post">
+    <form method="post" enctype="multipart/form-data">
         <div class="section">
-            <label for="designation">Designation (Title)</label>
-            <input type="text" id="designation" name="designation" size="20" value="{{ designation_filter if designation_filter else '' }}">
-            <label for="skills">Skills (comma-separated):</label>
-            <input type="text" id="skills" name="skills" value="{{ ', '.join(skills) }}" size="60">
-            <label for="location">&nbsp;Location filter:</label>
-            <input type="text" id="location" name="location" value="{{ location_filter if location_filter else '' }}" size="20">
-            <label for="years">&nbsp;Years of experience:</label>
-            <input type="number" id="years" name="years" min="0" step="1" value="{{ experience_years if experience_years is not none else '' }}" style="width: 80px;">
-            <label for="posted_within_days">&nbsp;Posted within (days):</label>
-            <input type="number" id="posted_within_days" name="posted_within_days" min="0" step="1" value="{{ posted_within_days if posted_within_days is not none else '' }}" style="width: 90px;">
-            <button type="submit">Fetch Jobs</button>
+
+            <!-- Resume Upload Section -->
+            <div style="margin-bottom: 16px; padding: 14px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px;">
+                {% if has_resume %}
+                    <span style="color: #28a745; font-weight: bold;">✅ Resume uploaded and active</span>
+                    <span style="color: #555; font-family: monospace; margin-left: 8px;">(sample_cv.pdf)</span>
+                    <button type="submit" formaction="{{ url_for('remove_resume') }}" formnovalidate
+                        style="margin-left: 12px; padding: 4px 10px; background: #dc3545; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;">
+                        Remove Resume
+                    </button>
+                {% else %}
+                    <label for="resume" style="font-weight: bold; margin-right: 10px;">📄 Upload Resume (PDF):</label>
+                    <input type="file" id="resume" name="resume" accept="application/pdf">
+                    <span id="resume-status" style="margin-left: 12px; font-size: 0.95em; color: #555;"></span>
+                {% endif %}
+            </div>
+
+            <!-- Filters Row -->
+            <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 14px;">
+                <div>
+                    <label for="designation" style="font-weight: bold; display: block; margin-bottom: 2px;">Designation</label>
+                    <input type="text" id="designation" name="designation" size="22"
+                        value="{{ designation_filter if designation_filter else '' }}"
+                        placeholder="e.g. Software Engineer">
+                </div>
+                <div style="flex: 1; min-width: 260px;">
+                    <label for="skills" style="font-weight: bold; display: block; margin-bottom: 2px;">Skills (comma-separated)</label>
+                    <input type="text" id="skills" name="skills" style="width: 100%;"
+                        value="{{ ', '.join(skills) }}"
+                        placeholder="Extracted from resume or type manually…">
+                </div>
+                <div>
+                    <label for="location" style="font-weight: bold; display: block; margin-bottom: 2px;">Location</label>
+                    <input type="text" id="location" name="location" size="18"
+                        value="{{ location_filter if location_filter else '' }}"
+                        placeholder="e.g. Bangalore">
+                </div>
+                <div>
+                    <label for="years" style="font-weight: bold; display: block; margin-bottom: 2px;">Experience (yrs)</label>
+                    <input type="number" id="years" name="years" min="0" step="1"
+                        value="{{ experience_years if experience_years is not none else '' }}"
+                        style="width: 80px;">
+                </div>
+                <div>
+                    <label for="posted_within_days" style="font-weight: bold; display: block; margin-bottom: 2px;">Posted within (days)</label>
+                    <input type="number" id="posted_within_days" name="posted_within_days" min="0" step="1"
+                        value="{{ posted_within_days if posted_within_days is not none else '' }}"
+                        style="width: 90px;">
+                </div>
+            </div>
+
+            <button id="fetch-btn" type="submit"
+                style="padding: 10px 28px; background: #007bff; color: #fff; border: none; cursor: pointer; border-radius: 5px; font-size: 1em; font-weight: bold;">
+                🔍 Fetch Jobs
+            </button>
+
         </div>
     </form>
 
@@ -97,26 +142,22 @@
                                 <td>{{ job.skills|join(', ') }}</td>
                                 <td>{{ job.source }}</td><td>{{ job.apply_type if job.apply_type else 'N/A' }}</td>
                                 <td>
-                                    {% if job.is_applied %}
-                                        <span class="apply-btn" style="background: #28a745; cursor: default; border: 1px solid #218838;">Applied</span>
-                                    {% else %}
-                                        <form action="{{ url_for('apply_job') }}" method="post" target="_blank" style="display:inline; margin-right: 5px;">
-                                            <input type="hidden" name="title" value="{{ job.title }}">
-                                            <input type="hidden" name="company" value="{{ job.company }}">
-                                            <input type="hidden" name="location" value="{{ job.location if job.location else '' }}">
-                                            <input type="hidden" name="source" value="{{ job.source }}">
-                                            <input type="hidden" name="url" value="{{ job.url if job.url else '#' }}">
-                                            <button
-                                                type="submit"
-                                                class="apply-btn{% if not job.url %} disabled{% endif %}"
-                                                {% if not job.url %}disabled{% endif %}
-                                                onclick="setTimeout(() => window.location.reload(), 1000)"
-                                            >Apply</button>
-                                        </form>
+                                        <button
+                                            type="button"
+                                            class="apply-btn{% if not job.url %} disabled{% endif %}"
+                                            style="margin-right: 5px;"
+                                            {% if not job.url %}disabled{% endif %}
+                                            onclick="window.open('{{ job.url }}', '_blank', 'noopener,noreferrer');"
+                                        >View Job</button>
+                                        <button
+                                            type="button"
+                                            class="apply-btn"
+                                            style="margin-top: 5px; {% if job.is_applied %}background: #28a745; border: 1px solid #218838;{% else %}background: #ffc107; color: #000; border: 1px solid #d39e00;{% endif %}"
+                                            onclick="fetch('{{ url_for('apply_job_async') }}', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({title: '{{ job.title }}', company: '{{ job.company }}', location: '{{ job.location if job.location else '' }}', source: '{{ job.source }}'})}).then(() => window.location.reload());"
+                                        >{% if job.is_applied %}✅ Applied{% else %}Mark as Applied{% endif %}</button>
                                         {% if job.id %}
                                         <a href="{{ url_for('generate_cv', job_id=job.id) }}" class="apply-btn" style="background: #17a2b8; margin-top: 5px; font-size: 0.9em;" target="_blank">Generate CV</a>
                                         {% endif %}
-                                    {% endif %}
                                 </td>
                         </tr>
                         {% endfor %}
@@ -166,36 +207,86 @@
     {% endif %}
 
     <script>
+    // ── Resume Upload → Auto-Skill Extraction → Auto-Fetch Jobs ───────────
+    (function () {
+        var resumeInput = document.getElementById('resume');
+        if (!resumeInput) return; // resume already uploaded, nothing to do
+
+        var statusEl = document.getElementById('resume-status');
+        var skillsEl = document.getElementById('skills');
+        var fetchBtn = document.getElementById('fetch-btn');
+        var form     = resumeInput.closest('form');
+
+        resumeInput.addEventListener('change', function () {
+            var file = this.files[0];
+            if (!file) return;
+
+            // 1. Show extracting state — disable Fetch Jobs to prevent early click
+            statusEl.innerHTML = '⏳ <em>Reading resume and extracting skills…</em>';
+            statusEl.style.color = '#888';
+            fetchBtn.disabled = true;
+            fetchBtn.textContent = '⏳ Extracting skills…';
+            fetchBtn.style.background = '#adb5bd';
+
+            var formData = new FormData();
+            formData.append('resume', file);
+
+            fetch('/upload-resume', { method: 'POST', body: formData })
+                .then(function (res) { return res.json(); })
+                .then(function (data) {
+                    if (data.status === 'success' && data.skills && data.skills.length > 0) {
+                        // 2. Fill skills field automatically
+                        skillsEl.value = data.skills_str;
+
+                        // 3. Show what was extracted, then auto-submit to fetch jobs
+                        statusEl.innerHTML = '✅ <strong>Skills extracted:</strong> ' + data.skills_str +
+                                             ' — <em>fetching jobs now…</em>';
+                        statusEl.style.color = '#28a745';
+                        fetchBtn.textContent = '🔍 Fetching Jobs…';
+
+                        // 4. Auto-submit the form immediately
+                        form.submit();
+
+                    } else {
+                        // Could not extract — let the user type manually
+                        statusEl.innerHTML = '⚠️ Could not extract skills from the resume. Please type them manually and click Fetch Jobs.';
+                        statusEl.style.color = '#dc3545';
+                        fetchBtn.disabled = false;
+                        fetchBtn.textContent = '🔍 Fetch Jobs';
+                        fetchBtn.style.background = '#007bff';
+                    }
+                })
+                .catch(function () {
+                    statusEl.innerHTML = '❌ Upload failed. Check the server and try again.';
+                    statusEl.style.color = '#dc3545';
+                    fetchBtn.disabled = false;
+                    fetchBtn.textContent = '🔍 Fetch Jobs';
+                    fetchBtn.style.background = '#007bff';
+                });
+        });
+    })();
+
+    // ── Table Column Filter (existing) ─────────────────────────────────────
     function filterJobs() {
         var table = document.getElementById("jobsTable");
+        if (!table) return;
         var tr = table.getElementsByTagName("tr");
-        
-        // Get all filter inputs from the filter-row
         var filterRow = table.getElementsByClassName("filter-row")[0];
         if (!filterRow) return;
         var inputs = filterRow.getElementsByTagName("input");
-        
-        // Start from row 2 (index 2) because 0 is headers and 1 is filters
         for (var i = 2; i < tr.length; i++) {
-            if (tr[i].classList.contains("common")) {
-                // Ignore the common jobs table if it shares logic, but here we only filter jobsTable
-            }
-            
             var displayRow = true;
             var td = tr[i].getElementsByTagName("td");
-            
-            // Loop through each column that has a filter input
             for (var j = 0; j < inputs.length; j++) {
                 var filterValue = inputs[j].value.toUpperCase();
                 if (filterValue && td[j]) {
                     var txtValue = td[j].textContent || td[j].innerText;
                     if (txtValue.toUpperCase().indexOf(filterValue) === -1) {
-                        displayRow = false; // Mismatch on this column
+                        displayRow = false;
                         break;
                     }
                 }
             }
-            
             tr[i].style.display = displayRow ? "" : "none";
         }
     }
