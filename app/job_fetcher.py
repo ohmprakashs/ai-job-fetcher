@@ -389,8 +389,16 @@ def fetch_linkedin_jobs(skills, location="", designation=""):
                         import re
                         if re.search(r'(?<![a-z0-9])' + re.escape(s.lower()) + r'(?![a-z0-9])', search_text):
                             extracted_skills.append(s)
-                            
-                    # Remove the fallback that copies the user skills. We only want what is actually found.
+
+                    # Try to fetch the real JD text via LinkedIn guest API (no auth needed).
+                    # This gives us the actual skill keywords from the job description.
+                    fetched_description = ""
+                    if job_url:
+                        try:
+                            from jd_scraper import scrape_jd_text as _scrape
+                            fetched_description = _scrape(job_url, "linkedin") or ""
+                        except Exception:
+                            pass
 
                     jobs.append(
                         {
@@ -398,6 +406,8 @@ def fetch_linkedin_jobs(skills, location="", designation=""):
                             "company": company_tag.text.strip() if company_tag else "N/A",
                             "location": location_tag.text.strip() if location_tag else "N/A",
                             "skills": extracted_skills,
+                            "snippet": card_text,          # card text available for scoring
+                            "description": fetched_description,  # full JD text if fetchable
                             "url": job_url,
                             "source": "LinkedIn",
                             "apply_type": apply_type,
@@ -483,8 +493,8 @@ def fetch_jobs(
     if not locations:
         locations = [""]
 
-    # Split skills into 2-skill chunks so every skill gets used in at least one search call
-    skill_pairs = _skill_chunks(skills, chunk_size=2)
+    # Split skills into 2 groups so ALL skills drive at least one search query
+    skill_pairs = _skill_chunks(skills, max_chunks=2)
 
     for loc in locations:
         for skill_pair in skill_pairs:

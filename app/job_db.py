@@ -30,7 +30,8 @@ def init_db():
     for col, ctype in [("url", "TEXT"), ("is_applied", "INTEGER DEFAULT 0"), 
                        ("experience_min", "INTEGER"), ("experience_max", "INTEGER"),
                        ("posted_days_ago", "INTEGER"), ("posted_date", "TEXT"),
-                       ("apply_type", "TEXT"), ("description", "TEXT")]:
+                       ("apply_type", "TEXT"), ("description", "TEXT"),
+                       ("snippet", "TEXT")]:
         try:
             c.execute(f"ALTER TABLE jobs ADD COLUMN {col} {ctype}")
         except sqlite3.OperationalError:
@@ -46,8 +47,10 @@ def insert_or_update_job(job):
     skills_str = ','.join(job.get('skills', []))
     try:
         c.execute('''
-            INSERT INTO jobs (title, company, location, skills, source, fetched_at, url, experience_min, experience_max, posted_days_ago, posted_date, description)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO jobs (title, company, location, skills, source, fetched_at, url,
+                              experience_min, experience_max, posted_days_ago, posted_date,
+                              description, snippet)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(title, company, location, source) DO UPDATE SET
                 skills=excluded.skills,
                 fetched_at=excluded.fetched_at,
@@ -55,7 +58,9 @@ def insert_or_update_job(job):
                 experience_min=excluded.experience_min,
                 experience_max=excluded.experience_max,
                 posted_days_ago=excluded.posted_days_ago,
-                posted_date=excluded.posted_date
+                posted_date=excluded.posted_date,
+                description=COALESCE(NULLIF(excluded.description,''), jobs.description),
+                snippet=COALESCE(NULLIF(excluded.snippet,''), jobs.snippet)
         ''', (
             job.get('title', ''),
             job.get('company', ''),
@@ -69,6 +74,7 @@ def insert_or_update_job(job):
             job.get('posted_days_ago'),
             job.get('posted_date'),
             job.get('description', '') or '',
+            job.get('snippet', '') or '',
         ))
         conn.commit()
     finally:
