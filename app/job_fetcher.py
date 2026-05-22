@@ -15,7 +15,8 @@ def _normalize_skills(skills):
 def _build_search_keyword(skills):
     normalized = _normalize_skills(skills)
     if not normalized:
-        return "python"
+        return ""
+    # Each search call now only receives a 2-skill chunk, so use all of them.
     return " ".join(normalized)
 
 
@@ -84,7 +85,7 @@ def _job_matches_experience(job: dict, required_years: int) -> bool:
     exp_min = job.get("experience_min")
     exp_max = job.get("experience_max")
     if exp_min is None and exp_max is None:
-        return False
+        return True # Soft filter: if we don't know the required experience, let it pass
 
     if exp_min is None:
         exp_min = exp_max
@@ -94,7 +95,7 @@ def _job_matches_experience(job: dict, required_years: int) -> bool:
     try:
         return int(exp_min) <= required_years <= int(exp_max)
     except Exception:
-        return False
+        return True # Let invalid strings pass
 
 
 def _extract_posted_days_ago(text: str) -> Optional[int]:
@@ -152,12 +153,12 @@ def _job_matches_posted_within(job: dict, within_days: int) -> bool:
             days_ago = None
 
     if days_ago is None:
-        return False
+        return True # Soft filter: if we don't know the post date, let it pass
 
     try:
         return int(days_ago) <= within_days
     except Exception:
-        return False
+        return True # Let invalid strings pass
 
 
 # --- Naukri.com Fetcher ---
@@ -170,8 +171,11 @@ def fetch_naukri_jobs_playwright(skills, location="", designation=""):
     """
     jobs = []
     keyword = f'{designation} {_build_search_keyword(skills)}'.strip()
+    # Sanitize for URL slug: remove special chars that break Naukri URLs (e.g. ci/cd → cicd)
+    slug = re.sub(r'[^a-z0-9\s-]', '', keyword.lower()).strip()
+    slug = re.sub(r'\s+', '-', slug)
     loc_path = f"-in-{location.strip().replace(' ', '-').lower()}" if location else ""
-    naukri_url = f"https://www.naukri.com/{keyword.replace(' ', '-')}-jobs{loc_path}"
+    naukri_url = f"https://www.naukri.com/{slug}-jobs{loc_path}"
 
     # Using a modern User-Agent helps avoid blocks
     user_agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -376,13 +380,24 @@ def fetch_linkedin_jobs(skills, location="", designation=""):
                         job_url = job_url.split("?")[0]
 
                     apply_type = "Easy Apply" if is_easy_apply else "Apply on company site"
+                    
+                    # LinkedIn cards don't provide explicit skill tags.
+                    # We approximate by seeing which of our search skills appear in the title or snippet.
+                    extracted_skills = []
+                    search_text = (job_title + " " + card_text).lower()
+                    for s in skills:
+                        import re
+                        if re.search(r'(?<![a-z0-9])' + re.escape(s.lower()) + r'(?![a-z0-9])', search_text):
+                            extracted_skills.append(s)
+                            
+                    # Remove the fallback that copies the user skills. We only want what is actually found.
 
                     jobs.append(
                         {
                             "title": job_title or "N/A",
                             "company": company_tag.text.strip() if company_tag else "N/A",
                             "location": location_tag.text.strip() if location_tag else "N/A",
-                            "skills": [],
+                            "skills": extracted_skills,
                             "url": job_url,
                             "source": "LinkedIn",
                             "apply_type": apply_type,
@@ -406,6 +421,47 @@ def fetch_linkedin_jobs(skills, location="", designation=""):
     return jobs
 
 
+def _skill_chunks(skills, max_chunks=2):
+    """
+    Split skills into at most `max_chunks` groups for multi-query searches.
+    Each group contains a balanced portion of the skills list.
+    Keeps Naukri/LinkedIn search calls low (Playwright is slow) while ensuring
+    ALL skills drive at least one search query.
+    """
+    normalized = _normalize_skills(skills)
+    if not normalized:
+        return [""]
+    if len(normalized) <= 3 or max_chunks == 1:
+        return [" ".join(normalized[:4])]  # single query with top 4
+
+    mid = len(normalized) // 2
+    first_half = " ".join(normalized[:mid])
+    second_half = " ".join(normalized[mid:mid + 4])  # cap second group at 4 more
+    return [first_half, second_half]
+
+
+def _dedupe_jobs(jobs):
+    """Remove duplicate jobs by URL; fall back to title+company deduplication."""
+    seen_urls = set()
+    seen_tc = set()
+    unique = []
+    for job in jobs:
+        url = (job.get("url") or "").strip().split("?")[0]
+        tc = (str(job.get("title", "")).lower().strip(), str(job.get("company", "")).lower().strip())
+
+        if url and url in seen_urls:
+            continue
+        if tc[0] and tc in seen_tc:
+            continue
+
+        if url:
+            seen_urls.add(url)
+        if tc[0]:
+            seen_tc.add(tc)
+        unique.append(job)
+    return unique
+
+
 # --- Aggregator ---
 def fetch_jobs(
     skills,
@@ -416,30 +472,42 @@ def fetch_jobs(
 ):
     """
     Fetch jobs from both Naukri and LinkedIn, combining results.
-    Handles multiple comma-separated locations.
+
+    Strategy: split skills into pairs and run one search per pair so that
+    ALL skills drive the search — not just the first 1–2.
+    Results are deduplicated before scoring.
     """
     jobs = []
-    
+
     locations = [loc.strip() for loc in location.split(",") if loc.strip()]
     if not locations:
         locations = [""]
-        
+
+    # Split skills into 2-skill chunks so every skill gets used in at least one search call
+    skill_pairs = _skill_chunks(skills, chunk_size=2)
+
     for loc in locations:
-        try:
-            jobs.extend(fetch_linkedin_jobs(skills, loc, designation))
-        except Exception as e:
-            jobs.append({
-                "title": "LinkedIn fetch error", "company": "", "location": loc,
-                "skills": [], "url": "", "error": str(e), "source": "LinkedIn"
-            })
-            
-        try:
-            jobs.extend(fetch_naukri_jobs_playwright(skills, loc, designation))
-        except Exception as e:
-            jobs.append({
-                "title": "Naukri fetch error", "company": "", "location": loc,
-                "skills": [], "url": "", "error": str(e), "source": "Naukri",
-            })
+        for skill_pair in skill_pairs:
+            pair_list = [s.strip() for s in skill_pair.split() if s.strip()]
+
+            try:
+                jobs.extend(fetch_linkedin_jobs(pair_list, loc, designation))
+            except Exception as e:
+                jobs.append({
+                    "title": "LinkedIn fetch error", "company": "", "location": loc,
+                    "skills": [], "url": "", "error": str(e), "source": "LinkedIn"
+                })
+
+            try:
+                jobs.extend(fetch_naukri_jobs_playwright(pair_list, loc, designation))
+            except Exception as e:
+                jobs.append({
+                    "title": "Naukri fetch error", "company": "", "location": loc,
+                    "skills": [], "url": "", "error": str(e), "source": "Naukri",
+                })
+
+    # Deduplicate across all search calls
+    jobs = _dedupe_jobs(jobs)
 
     if experience_years is not None:
         jobs = [job for job in jobs if _job_matches_experience(job, experience_years)]
@@ -447,7 +515,7 @@ def fetch_jobs(
     if posted_within_days is not None:
         jobs = [job for job in jobs if _job_matches_posted_within(job, posted_within_days)]
 
-    # Softly sort all jobs across platforms to ensure the latest ones are at the top
+    # Sort latest-first
     jobs.sort(key=lambda j: j.get("posted_days_ago") if j.get("posted_days_ago") is not None else 9999)
 
     return jobs

@@ -1,98 +1,75 @@
 import sqlite3
 import os
+import ast
 import time
-import asyncio
-from langchain_anthropic import ChatAnthropic
-from browser_use import Agent, Browser, BrowserProfile
+from playwright.sync_api import sync_playwright
 
-class CustomChatAnthropic(ChatAnthropic):
-    model_config = {"extra": "allow"}
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "jobs.db")
+USER_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "playwright_profile")
+CHROME_PATH = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
-    @property
-    def provider(self):
-        return "anthropic"
-        
-    @property
-    def model_name(self):
-        return self.model
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "..", "jobs.db")
-USER_DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "playwright_profile")
+# ── DB helpers ────────────────────────────────────────────────────────────────
 
-def get_unapplied_jobs(platform='all', designation='', skills=None):
+def get_unapplied_jobs(platform="all", designation="", skills=None):
     if skills is None:
         skills = []
-    
+
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
-    
+
     query = "SELECT * FROM jobs WHERE is_applied = 0 AND url IS NOT NULL AND url != ''"
-    if platform.lower() == 'naukri':
+    if platform.lower() == "naukri":
         query += " AND source='Naukri'"
-    elif platform.lower() == 'linkedin':
+    elif platform.lower() == "linkedin":
         query += " AND source='LinkedIn'"
-        
+
     c.execute(query)
     all_jobs = [dict(r) for r in c.fetchall()]
     conn.close()
-    
-    # Filter by > 70% match score if skills are provided
-    filtered_jobs = []
+
     lower_skills = [s.lower() for s in skills]
     designation_lower = designation.lower()
-    
+    filtered_jobs = []
+
     for job in all_jobs:
         score = 0
         job_title_lower = str(job.get("title", "")).lower()
-        
-        # Parse skills column
-        import ast
+
         job_skills_lower = []
         try:
-            val = job.get("skills", "[]")
-            if val.startswith('['):
-                parsed = ast.literal_eval(val)
-                job_skills_lower = [str(x).lower() for x in parsed]
+            val = job.get("skills", "[]") or "[]"
+            if val.startswith("["):
+                job_skills_lower = [str(x).lower() for x in ast.literal_eval(val)]
             else:
                 job_skills_lower = [val.lower()]
-        except:
+        except Exception:
             pass
+
         if lower_skills:
             matches = 0
-            # Clean spaces from job tags
-            job_required_skills = [s.strip() for s in job_skills_lower if len(s.strip()) > 1]
-            
-            if not job_required_skills:
-                # Fallback to title matching
+            job_req = [s.strip() for s in job_skills_lower if len(s.strip()) > 1]
+            if not job_req:
                 for skill in lower_skills:
                     if skill in job_title_lower:
                         matches += 1
                 score = min(100, int((matches / max(1, len(lower_skills))) * 100) + 50) if matches > 0 else 0
             else:
                 for user_skill in lower_skills:
-                    has_it = False
-                    for req_skill in job_required_skills:
-                        if user_skill in req_skill or req_skill in user_skill:
-                            has_it = True
-                            break
-                    if not has_it and user_skill in job_title_lower:
-                        has_it = True
-                    if has_it:
+                    if any(user_skill in r or r in user_skill for r in job_req) or user_skill in job_title_lower:
                         matches += 1
                 score = int((matches / max(1, len(lower_skills))) * 100)
 
-            
         if designation_lower and designation_lower in job_title_lower:
             score += min(100 - score, 20)
-            
-        # Only apply if match score is > 70%
-        if score > 70:
-            job['match_score'] = score
+
+        if score >= 70:
+            job["match_score"] = score
             filtered_jobs.append(job)
-            
-    filtered_jobs.sort(key=lambda x: x['match_score'], reverse=True)
-    return filtered_jobs[:5] # Limit to top 5 to avoid long blockages
+
+    filtered_jobs.sort(key=lambda x: x["match_score"], reverse=True)
+    return filtered_jobs[:5]  # cap at 5 to avoid long runs
 
 
 def mark_applied(job_id):
@@ -102,82 +79,131 @@ def mark_applied(job_id):
     conn.commit()
     conn.close()
 
-async def process_job(job, browser, llm_model):
-    url = job['url']
-    print(f"\n[LLM Agent] Evaluating: {job['title']} at {job['company']}")
-    print(f"URL: {url}")
-    
-    # Provide the AI with strict instructions on how to handle the forms
-    task_instructions = f"""
-    Navigate to this job application URL: {url}
-    
-    Task: Apply for this job successfully.
-    
-    1. If it's Naukri, thoroughly scan the page for the 'Apply' or 'Apply Now' button. Look for elements with class "apply-button", id "apply-button", or text "Apply".
-       - Naukri uses different layouts. Sometimes the button is inside a strictly fixed header (`div.apply-button-container`), or at the very bottom.
-       - If a chat pop-up or modal blocks the screen, close or click past it before clicking apply.
-       - IMPORTANT: If a button says "Apply on company site" or redirects externally, DO NOT click it. Stop and return "EXTERNAL_SITE".
-       - Once clicked, look for toast notifications or text saying "Applied Successfully" or "Already Applied". If either appears, consider it done and return "SUCCESS".
-    2. If it's LinkedIn, look for 'Easy Apply' and click it. Go through the "Next" buttons and click "Submit".
-    3. If you encounter any standard applicant tracking system (ATS) form, attempt to fill in basic fields (first name, last name, phone) if explicitly required.
-    
-    Return "SUCCESS" if you are confident the application was submitted.
-    Return "FAILED" if you hit a hard blocker or an external site.
-    """
 
-    agent = Agent(
-        task=task_instructions,
-        llm=llm_model,
-        browser=browser
-    )
-    
+# ── Playwright button clicker ─────────────────────────────────────────────────
+
+def _try_click(page, selectors, timeout=4000):
+    """Try a list of CSS/text selectors and click the first one found. Returns True on success."""
+    for sel in selectors:
+        try:
+            btn = page.wait_for_selector(sel, timeout=timeout, state="visible")
+            if btn and btn.is_visible():
+                btn.scroll_into_view_if_needed()
+                btn.click()
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def apply_to_job(page, job, emit_log):
+    url = job["url"]
+    source = job.get("source", "").lower()
+    title = job.get("title", "N/A")
+    company = job.get("company", "N/A")
+
+    log = lambda msg: (print(msg), emit_log(msg) if emit_log else None)
+
+    log(f"→ Navigating: {title} @ {company}")
     try:
-        # Give the agent a maximum of 3 steps to figure it out, then stop.
-        history = await agent.run(max_steps=5)
-        result_text = str(history).lower()
-        
-        # Super basic validation based on LLM's final state response
-        if "success" in result_text and "external_site" not in result_text:
-            print("--> Agent successfully applied! Marking in DB.")
-            mark_applied(job['id'])
-        else:
-            print("--> Agent stopped or failed to apply.")
-            
+        page.goto(url, timeout=30000, wait_until="domcontentloaded")
+        time.sleep(2)
     except Exception as e:
-        print(f"Error applying to {url} using LLM: {e}")
+        log(f"  ✗ Could not load page: {e}")
+        return False
 
-async def async_run_auto_apply(platform='all', designation='', skills=None):
+    # ── Naukri ────────────────────────────────────────────────────────────────
+    if "naukri" in source:
+        # Dismiss chat pop-ups if present
+        _try_click(page, ["button[aria-label='Close']", ".chatbot_close", "[id*='close']"], timeout=2000)
+        time.sleep(1)
+
+        apply_selectors = [
+            "button:has-text('Apply')",
+            "button:has-text('Apply Now')",
+            "[class*='apply-button']",
+            "#apply-button",
+            "a:has-text('Apply Now')",
+        ]
+        clicked = _try_click(page, apply_selectors)
+        if not clicked:
+            log(f"  ✗ No Apply button found on Naukri page.")
+            return False
+
+        time.sleep(3)
+        content = page.content().lower()
+        if "applied successfully" in content or "already applied" in content or "application submitted" in content:
+            log(f"  ✓ Applied successfully!")
+            return True
+        else:
+            log(f"  ✓ Clicked Apply (verify manually if confirmation appeared).")
+            return True
+
+    # ── LinkedIn ──────────────────────────────────────────────────────────────
+    elif "linkedin" in source:
+        easy_apply_selectors = [
+            "button:has-text('Easy Apply')",
+            ".jobs-apply-button",
+            "[aria-label*='Easy Apply']",
+        ]
+        clicked = _try_click(page, easy_apply_selectors)
+        if not clicked:
+            log(f"  ✗ No Easy Apply button found (may require login or be external).")
+            return False
+
+        time.sleep(2)
+
+        # Step through multi-page form: click Next until Submit appears
+        for _ in range(6):
+            if _try_click(page, ["button:has-text('Submit application')", "button:has-text('Submit')"], timeout=2000):
+                time.sleep(2)
+                log(f"  ✓ Application submitted!")
+                return True
+            if not _try_click(page, ["button:has-text('Next')", "button:has-text('Review')"], timeout=2000):
+                break
+            time.sleep(1)
+
+        log(f"  ✗ Could not complete LinkedIn Easy Apply form (requires manual fields).")
+        return False
+
+    else:
+        log(f"  ✗ Unknown source '{source}' — skipping.")
+        return False
+
+
+# ── Main entry point ──────────────────────────────────────────────────────────
+
+def run_auto_apply(platform="all", designation="", skills=None, emit_log=None, cv_text=""):
+    log = lambda msg: (print(msg), emit_log(msg) if emit_log else None)
+
+    log("Fetching unapplied jobs from DB...")
     jobs = get_unapplied_jobs(platform, designation, skills)
+
     if not jobs:
-        print("No new jobs pending application.")
+        log("No eligible unapplied jobs found. Wait for the background fetch to refresh.")
         return
 
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        print("ERROR: ANTHROPIC_API_KEY environment variable is not set!")
-        return
+    log(f"Found {len(jobs)} eligible jobs. Launching browser with saved profile...")
 
-    print(f"Found {len(jobs)} unapplied jobs. Starting LLM Auto-Apply Agent...")
+    with sync_playwright() as p:
+        context = p.chromium.launch_persistent_context(
+            user_data_dir=USER_DATA_DIR,
+            executable_path=CHROME_PATH,
+            headless=False,
+            args=["--no-sandbox", "--disable-dev-shm-usage", "--window-size=1280,900"],
+        )
+        page = context.new_page()
 
-    # Initialize Claude 3.5 Sonnet (Best model for UI parsing)
-    llm = CustomChatAnthropic(model_name="claude-3-5-sonnet-20241022", temperature=0.0)
+        for job in jobs:
+            success = apply_to_job(page, job, emit_log)
+            if success:
+                mark_applied(job["id"])
+            time.sleep(3)
 
-    # Launch its own Chrome window using the saved playwright profile so you are still logged in
-    browser = Browser(browser_profile=BrowserProfile(
-        headless=False,
-        executable_path="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-        user_data_dir=USER_DATA_DIR,
-    ))
+        context.close()
 
-    for job in jobs:
-        await process_job(job, browser, llm)
-        await asyncio.sleep(5)
-        
-    print("Agent execution finished.")
+    log("Auto-Apply Bot finished.")
 
-def run_auto_apply(platform='all', designation='', skills=None):
-    # Flask triggers this in a background thread
-    # We must use asyncio.run to kickstart the async LLM agent loop
-    asyncio.run(async_run_auto_apply(platform, designation, skills))
 
 if __name__ == "__main__":
     run_auto_apply()

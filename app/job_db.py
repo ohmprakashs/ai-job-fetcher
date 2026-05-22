@@ -29,7 +29,8 @@ def init_db():
     # Run migrations if table already existed without new columns
     for col, ctype in [("url", "TEXT"), ("is_applied", "INTEGER DEFAULT 0"), 
                        ("experience_min", "INTEGER"), ("experience_max", "INTEGER"),
-                       ("posted_days_ago", "INTEGER"), ("posted_date", "TEXT"), ("apply_type", "TEXT")]:
+                       ("posted_days_ago", "INTEGER"), ("posted_date", "TEXT"),
+                       ("apply_type", "TEXT"), ("description", "TEXT")]:
         try:
             c.execute(f"ALTER TABLE jobs ADD COLUMN {col} {ctype}")
         except sqlite3.OperationalError:
@@ -45,8 +46,8 @@ def insert_or_update_job(job):
     skills_str = ','.join(job.get('skills', []))
     try:
         c.execute('''
-            INSERT INTO jobs (title, company, location, skills, source, fetched_at, url, experience_min, experience_max, posted_days_ago, posted_date)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO jobs (title, company, location, skills, source, fetched_at, url, experience_min, experience_max, posted_days_ago, posted_date, description)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(title, company, location, source) DO UPDATE SET
                 skills=excluded.skills,
                 fetched_at=excluded.fetched_at,
@@ -66,8 +67,20 @@ def insert_or_update_job(job):
             job.get('experience_min'),
             job.get('experience_max'),
             job.get('posted_days_ago'),
-            job.get('posted_date')
+            job.get('posted_date'),
+            job.get('description', '') or '',
         ))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def update_job_description(job_id: int, description: str):
+    """Cache fetched JD text so we don't re-scrape every time."""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    try:
+        c.execute("UPDATE jobs SET description=? WHERE id=?", (description, job_id))
         conn.commit()
     finally:
         conn.close()
