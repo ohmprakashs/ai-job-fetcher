@@ -5,7 +5,8 @@ from job_db import init_db, mark_job_applied, get_job_applications_status, get_j
 import os
 import threading
 from auto_apply_bot import run_auto_apply
-from cv_generator import build_tailored_pdf, extract_skills_from_cv
+from cv_generator import build_tailored_pdf, extract_skills_from_cv, extract_text_from_pdf
+from ai_matcher import generate_ai_match_report
 
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -27,8 +28,11 @@ def upload_resume():
 
     extracted_skills_str = extract_skills_from_cv(resume_path)
     skills = [s.strip() for s in extracted_skills_str.split(',') if s.strip()] if extracted_skills_str else []
+    
+    from app.cv_generator import extract_role_from_cv
+    extracted_role = extract_role_from_cv(resume_path)
 
-    return jsonify({"status": "success", "skills": skills, "skills_str": ", ".join(skills)})
+    return jsonify({"status": "success", "skills": skills, "skills_str": ", ".join(skills), "role": extracted_role})
 
 
 @app.route('/', methods=['GET', 'POST'])
@@ -73,7 +77,7 @@ def index():
             experience_years=experience_years,
             posted_within_days=posted_within_days,
         )
-        summary = agent.fetch_and_summarize()
+        agent.fetch_and_summarize()
         jobs = agent.get_jobs()
         
         # Removed the strict local text fallback filter.
@@ -146,6 +150,16 @@ def remove_resume():
         os.remove(resume_path)
     return redirect(url_for('index'))
 
+@app.route('/ai-match/<int:job_id>', methods=['GET'])
+def ai_match(job_id):
+    job = get_job_by_id(job_id)
+    if not job or not job.get("url"):
+        return jsonify({"status": "error", "message": "Job or URL not found."}), 404
+        
+    resume_path = os.path.join(_BASE_DIR, "..", "sample_cv.pdf")
+    report = generate_ai_match_report(resume_path, job)
+    return jsonify({"status": "success", "report": report})
+
 @app.route('/generate-cv/<int:job_id>', methods=['GET'])
 def generate_cv(job_id):
     job = get_job_by_id(job_id)
@@ -173,7 +187,15 @@ def auto_apply_ui():
         
         # Start the lengthy browser automation in a background thread
         # This allows the Flask UI to return the success message immediately!
-        thread = threading.Thread(target=run_auto_apply, args=(platform, designation, skills))
+        resume_path = os.path.join(_BASE_DIR, "..", "sample_cv.pdf")
+        cv_text = ""
+        if os.path.exists(resume_path):
+            cv_text = extract_text_from_pdf(resume_path)
+            
+        def print_log(msg):
+            print(f"[BOT] {msg}")
+            
+        thread = threading.Thread(target=run_auto_apply, args=(platform, designation, skills, print_log, cv_text))
         thread.start()
         
         message = "✅ Auto Apply Bot successfully fired up in the background! Please keep your hands off the mouse while it runs."

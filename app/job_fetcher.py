@@ -15,8 +15,10 @@ def _normalize_skills(skills):
 def _build_search_keyword(skills):
     normalized = _normalize_skills(skills)
     if not normalized:
-        return "python"
-    return " ".join(normalized)
+        return ""
+    # Passing 20 keywords to job portals returns 0 results or garbage.
+    # Take at most top 2 skills for the search query to keep it broad enough.
+    return " ".join(normalized[:2])
 
 
 def _matches_requested_skills(requested_skills, extracted_skills, text=""):
@@ -84,7 +86,7 @@ def _job_matches_experience(job: dict, required_years: int) -> bool:
     exp_min = job.get("experience_min")
     exp_max = job.get("experience_max")
     if exp_min is None and exp_max is None:
-        return False
+        return True # Soft filter: if we don't know the required experience, let it pass
 
     if exp_min is None:
         exp_min = exp_max
@@ -94,7 +96,7 @@ def _job_matches_experience(job: dict, required_years: int) -> bool:
     try:
         return int(exp_min) <= required_years <= int(exp_max)
     except Exception:
-        return False
+        return True # Let invalid strings pass
 
 
 def _extract_posted_days_ago(text: str) -> Optional[int]:
@@ -152,12 +154,12 @@ def _job_matches_posted_within(job: dict, within_days: int) -> bool:
             days_ago = None
 
     if days_ago is None:
-        return False
+        return True # Soft filter: if we don't know the post date, let it pass
 
     try:
         return int(days_ago) <= within_days
     except Exception:
-        return False
+        return True # Let invalid strings pass
 
 
 # --- Naukri.com Fetcher ---
@@ -376,13 +378,24 @@ def fetch_linkedin_jobs(skills, location="", designation=""):
                         job_url = job_url.split("?")[0]
 
                     apply_type = "Easy Apply" if is_easy_apply else "Apply on company site"
+                    
+                    # LinkedIn cards don't provide explicit skill tags.
+                    # We approximate by seeing which of our search skills appear in the title or snippet.
+                    extracted_skills = []
+                    search_text = (job_title + " " + card_text).lower()
+                    for s in skills:
+                        import re
+                        if re.search(r'(?<![a-z0-9])' + re.escape(s.lower()) + r'(?![a-z0-9])', search_text):
+                            extracted_skills.append(s)
+                            
+                    # Remove the fallback that copies the user skills. We only want what is actually found.
 
                     jobs.append(
                         {
                             "title": job_title or "N/A",
                             "company": company_tag.text.strip() if company_tag else "N/A",
                             "location": location_tag.text.strip() if location_tag else "N/A",
-                            "skills": [],
+                            "skills": extracted_skills,
                             "url": job_url,
                             "source": "LinkedIn",
                             "apply_type": apply_type,
