@@ -13,8 +13,8 @@ sys.path.insert(0, app_dir)
 def background_fetch_all():
     """Fetches jobs periodically using generic inputs to keep DB fresh"""
     try:
-        from job_agent import JobAIAgent
-        from job_db import init_db
+        from app.job_agent import JobAIAgent
+        from app.job_db import init_db
         print("Starting background job fetch...")
         init_db()
         # You can adjust these default background search parameters
@@ -32,10 +32,10 @@ def main() -> None:
     scheduler.add_job(func=background_fetch_all, trigger="interval", hours=6)
     scheduler.start()
 
-    import ui  # type: ignore
+    from app import ui
 
     try:
-        ui.app.run(host="0.0.0.0", port=5001, debug=True, use_reloader=False) # use_reloader=False prevents scheduler running twice
+        ui.app.run(host="0.0.0.0", port=5000, debug=True, use_reloader=False) # use_reloader=False prevents scheduler running twice
     finally:
         scheduler.shutdown()
 

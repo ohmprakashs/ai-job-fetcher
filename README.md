@@ -26,7 +26,7 @@ An intelligent, automated pipeline that scrapes job postings from LinkedIn and N
 * **Background Execution**: The bot runs asynchronously via Python `threading` from the web UI so it doesn't freeze the server.
 
 ### 6. Interactive Web Dashboard
-* **Flask UI**: A clean dashboard running at `http://127.0.0.1:5001/`.
+* **Flask UI**: A clean dashboard running at `http://127.0.0.1:5000/`.
 * **Real-time Controls**: View match scores, edit skill/date filters, and fire off the Auto-Apply bot directly from the browser.
 
 ---
@@ -65,7 +65,7 @@ An intelligent, automated pipeline that scrapes job postings from LinkedIn and N
    ```
 
 3. **Access the Dashboard:**
-   Open `http://127.0.0.1:5001/` in your browser.
+   Open `http://127.0.0.1:5000/` in your browser.
 
 ---
 

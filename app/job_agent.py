@@ -46,21 +46,8 @@ class JobAIAgent:
                 if expanded_locs and not any(l in job_loc for l in expanded_locs):
                     continue
                 
-            # Check skills carefully: either the skill is in the job title or explicitly in the tags
-            # We want to match at least ONE skill strongly.
-            if self.skills:
-                job_title_lower = str(job.get("title", "")).lower()
-                job_skills_lower = [s.lower().strip() for s in job.get("skills", [])]
-                
-                matched = False
-                for req_skill in self.skills:
-                    if req_skill in job_title_lower or req_skill in job_skills_lower:
-                        matched = True
-                        break
-                if not matched:
-                    # Try soft matching inside the title if it wasn't an exact match
-                    if not any(req_skill in job_title_lower for req_skill in self.skills):
-                        continue
+            # Let the advanced scoring logic handle skill matching later.
+            # We no longer hard-filter jobs based on strict skill title matches here.
                  
             # Check experience
             if self.experience_years is not None:
@@ -72,58 +59,81 @@ class JobAIAgent:
                 if not _job_matches_posted_within(job, self.posted_within_days):
                     continue
                     
-            # Check designation flexibly against Job Title
+            # Check designation flexibly against Job Title (now just a soft filter for scoring)
             if self.designation:
                 job_title = str(job.get("title", "")).lower()
                 desig_parts = self.designation.replace(',', ' ').split()
-                # Ensure all words from designation are found in the title
-                if not all(part in job_title for part in desig_parts):
-                    continue
+                # We won't block the job here anymore. We will let the score decide.
 
-            # Calculate match score (Resume vs JD)
+            # Calculate Advanced ATS match score (Resume vs JD)
+            import re as _re
             score = 0
             job_title_lower = str(job.get("title", "")).lower()
             job_skills_lower = [str(s).lower().strip() for s in job.get("skills", [])]
-            
+
+            matched_skills = []
+            missing_skills = []
+
             if self.skills:
-                matches = 0
-                # What the job requires (from tags)
+                # Naukri provides explicit skill tags; LinkedIn does not.
                 job_required_skills = [s for s in job_skills_lower if len(s) > 1]
-                
-                # If LinkedIn or job has no skills, we evaluate based on how many user skills match the title
-                if not job_required_skills:
-                    # just see if at least one user skill is in title.
-                    for skill in self.skills:
-                        if skill in job_title_lower:
-                            matches += 1
-                    # Give it a decent baseline if it matches title well
-                    score = min(100, int((matches / max(1, len(self.skills))) * 100) + 50) if matches > 0 else 0
+
+                # Build the broadest possible search text from all available fields:
+                #   title  +  skill tags  +  description / snippet  +  company name
+                # This helps LinkedIn jobs (which lack tags) still get a fair score.
+                search_text = " ".join(filter(None, [
+                    job_title_lower,
+                    " ".join(job_required_skills),
+                    str(job.get("description", "")).lower(),
+                    str(job.get("snippet", "")).lower(),
+                    str(job.get("company", "")).lower(),
+                ]))
+
+                def _skill_in_text(skill, text):
+                    return bool(_re.search(
+                        r'(?<![a-z0-9])' + _re.escape(skill) + r'(?![a-z0-9])', text
+                    ))
+
+                for user_skill in self.skills:
+                    # Check explicit tag list first (exact / substring match)
+                    tag_match = any(
+                        user_skill == req or (len(user_skill) > 2 and user_skill in req)
+                        for req in job_required_skills
+                    )
+                    # Fall back to searching all available text
+                    if tag_match or _skill_in_text(user_skill, search_text):
+                        matched_skills.append(user_skill)
+                    else:
+                        missing_skills.append(user_skill)
+
+                if self.skills:
+                    # Score: 25 pts per matched skill, capped at 75
+                    score = min(len(matched_skills) * 25, 75)
                 else:
-                    # Normal Naukri job with tags
-                    # Does the job have the user's skill?
-                    for user_skill in self.skills:
-                        has_it = False
-                        for req_skill in job_required_skills:
-                            if user_skill in req_skill or req_skill in user_skill:
-                                has_it = True
-                                break
-                        if not has_it and user_skill in job_title_lower:
-                            has_it = True
-                        if has_it:
-                            matches += 1
-                    
-                    score = int((matches / len(self.skills)) * 100)
+                    score = 0
                 
-            # Bonus score if designation strictly matches 
-            if self.designation and all(p in job_title_lower for p in self.designation.replace(",", " ").split()):
-                score += min(100 - score, 20)  # Max score is 100
+            desig_score = 0
+            if self.designation:
+                desig_parts = self.designation.replace(",", " ").split()
+                # Strict exact full match
+                if all(p in job_title_lower for p in desig_parts):
+                    desig_score = 25
+                # Meaningless partial matches should not grant points to unrelated JDs
+                elif len(desig_parts) > 1 and sum(1 for p in desig_parts if p in job_title_lower) >= len(desig_parts) / 2:
+                    desig_score = 10
                 
-            job['match_score'] = score
+            score += desig_score
+            
+            job['match_score'] = min(score, 100)
+            job['matched_skills'] = matched_skills
+            job['missing_skills'] = missing_skills
                     
-            if not self.skills:
+            if not self.skills and not self.designation:
+                # No filters provided, show everything with 100% score
                 job['match_score'] = 100
                 filtered_jobs.append(job)
-            elif job["match_score"] >= 70:
+            elif job["match_score"] >= 50: 
+                # Either skills or designation provided, show jobs with >= 50 match
                 filtered_jobs.append(job)
             
         # Sort jobs by match_score descending

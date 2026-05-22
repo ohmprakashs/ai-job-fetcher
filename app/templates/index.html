@@ -106,12 +106,24 @@
         
                 <table id="jobsTable">
                         <tr>
-                                <th>Match %</th><th>Designation</th><th>Company</th><th>Location</th><th>Posted</th><th>Experience</th><th>Skills</th><th>Source</th><th>Apply Type</th><th>Apply</th>
+                                <th>Match %</th><th>Designation</th><th>Company</th><th>Location</th><th>Posted</th><th>Experience</th><th>Key Skills</th><th>Source</th><th>Apply Type</th><th>Apply</th>
                         </tr>
                         
                         {% for job in jobs %}
                         <tr>
-                                <td>{{ job.match_score }}%</td>
+                                <td>
+                                    <strong>{{ job.match_score }}%</strong>
+                                    {% if job.matched_skills or job.missing_skills %}
+                                    <div style="font-size: 0.8em; margin-top: 4px;">
+                                        {% if job.matched_skills %}
+                                        <div style="color: green;">✔ {{ job.matched_skills|join(', ') }}</div>
+                                        {% endif %}
+                                        {% if job.missing_skills %}
+                                        <div style="color: red;">✖ {{ job.missing_skills|join(', ') }}</div>
+                                        {% endif %}
+                                    </div>
+                                    {% endif %}
+                                </td>
                                 <td>{{ job.title }}</td>
                                 <td>{{ job.company }}</td>
                                 <td>{{ job.location if job.location else '' }}</td>
@@ -139,7 +151,13 @@
                                         N/A
                                     {% endif %}
                                 </td>
-                                <td>{{ job.skills|join(', ') }}</td>
+                                <td>
+                                    {% if job.skills %}
+                                        {{ job.skills|join(', ') }}
+                                    {% else %}
+                                        <span style="color:#aaa; font-size:0.85em;">matched from title</span>
+                                    {% endif %}
+                                </td>
                                 <td>{{ job.source }}</td><td>{{ job.apply_type if job.apply_type else 'N/A' }}</td>
                                 <td>
                                         <button
@@ -157,6 +175,8 @@
                                         >{% if job.is_applied %}✅ Applied{% else %}Mark as Applied{% endif %}</button>
                                         {% if job.id %}
                                         <a href="{{ url_for('generate_cv', job_id=job.id) }}" class="apply-btn" style="background: #17a2b8; margin-top: 5px; font-size: 0.9em;" target="_blank">Generate CV</a>
+                                        <button type="button" class="apply-btn ai-match-btn" data-job-id="{{ job.id }}" style="background: #6f42c1; margin-top: 5px; font-size: 0.9em;">✨ Run AI Matcher</button>
+                                        <div id="ai-report-{{ job.id }}" style="display: none; font-size: 0.85em; text-align: left; margin-top: 5px; background: #e9ecef; padding: 5px; border-radius: 4px; overflow-wrap: anywhere;"></div>
                                         {% endif %}
                                 </td>
                         </tr>
@@ -168,25 +188,6 @@
     {% if did_submit and not jobs %}
     <div class="section">
         <p><b>No jobs found.</b> Try clearing filters (Years of experience / Posted within) or changing skills/location.</p>
-    </div>
-    {% endif %}
-
-    {% if summary %}
-    <div class="section">
-        <h2>Job Count per Company and Skill</h2>
-        <table>
-            <tr><th>Company</th><th>Skills (Count)</th></tr>
-            {% for company, skills in summary.items() %}
-            <tr>
-                <td>{{ company }}</td>
-                <td>
-                    {% for skill, count in skills.items() %}
-                        {{ skill }} ({{ count }}){% if not loop.last %}, {% endif %}
-                    {% endfor %}
-                </td>
-            </tr>
-            {% endfor %}
-        </table>
     </div>
     {% endif %}
 
@@ -237,9 +238,16 @@
                     if (data.status === 'success' && data.skills && data.skills.length > 0) {
                         // 2. Fill skills field automatically
                         skillsEl.value = data.skills_str;
+                        
+                        // 2b. Fill designation field automatically
+                        var designationEl = document.getElementById('designation');
+                        if (designationEl && data.role) {
+                            designationEl.value = data.role;
+                        }
 
                         // 3. Show what was extracted, then auto-submit to fetch jobs
-                        statusEl.innerHTML = '✅ <strong>Skills extracted:</strong> ' + data.skills_str +
+                        var roleMsg = data.role ? " | <strong>Role:</strong> " + data.role : "";
+                        statusEl.innerHTML = '✅ <strong>Skills extracted:</strong> ' + data.skills_str + roleMsg +
                                              ' — <em>fetching jobs now…</em>';
                         statusEl.style.color = '#28a745';
                         fetchBtn.textContent = '🔍 Fetching Jobs…';
@@ -290,6 +298,37 @@
             tr[i].style.display = displayRow ? "" : "none";
         }
     }
+    // ── AI Matcher Logic ──────────────────────────────────────────────────
+    document.querySelectorAll('.ai-match-btn').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            const jobId = this.getAttribute('data-job-id');
+            const reportDiv = document.getElementById(`ai-report-${jobId}`);
+            
+            // disable button & show loading state
+            this.disabled = true;
+            this.textContent = "⏳ Reading Job & Resume...";
+            reportDiv.style.display = "block";
+            reportDiv.textContent = "Fetching Job Description and extracting CV... This usually takes ~10 seconds.";
+            
+            try {
+                const response = await fetch(`/ai-match/${jobId}`);
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    // Quick and dirty markdown-style bold removal/replacement for basic text block
+                    let reportText = data.report.replace(/\*\*/g, '').replace(/\n/g, '<br>');
+                    reportDiv.innerHTML = reportText;
+                } else {
+                    reportDiv.textContent = "❌ " + data.message;
+                }
+            } catch (err) {
+                reportDiv.textContent = "❌ Network Error.";
+            } finally {
+                this.textContent = "✨ Re-run AI Match";
+                this.disabled = false;
+            }
+        });
+    });
     </script>
 </body>
 </html>
