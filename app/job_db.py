@@ -141,14 +141,21 @@ def update_job_description(job_id: int, description: str):
 
 
 def backfill_skills_from_descriptions():
-    """One-time backfill: extract skills from cached descriptions for jobs with empty skills."""
+    """Backfill skills from description + snippet for ALL jobs lacking rich skills."""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     try:
+        # Target every job that has some text (desc or snippet) but fewer than 3 skills
         rows = c.execute("""
             SELECT id, description, snippet, skills FROM jobs
-            WHERE description != '' AND description IS NOT NULL
-            AND (skills IS NULL OR skills = '' OR skills = 'devops')
+            WHERE (
+                (description IS NOT NULL AND description != '')
+                OR (snippet IS NOT NULL AND snippet != '')
+            )
+            AND (
+                skills IS NULL OR skills = ''
+                OR LENGTH(skills) - LENGTH(REPLACE(skills, ',', '')) < 2
+            )
         """).fetchall()
         updated = 0
         for row in rows:
@@ -163,6 +170,37 @@ def backfill_skills_from_descriptions():
                 updated += 1
         conn.commit()
         return updated
+    finally:
+        conn.close()
+
+
+def get_jobs_needing_jd_fetch(limit=60):
+    """Return jobs that have a URL but no cached description — need JD fetch."""
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        rows = conn.execute("""
+            SELECT id, url, source FROM jobs
+            WHERE (description IS NULL OR description = '')
+            AND url IS NOT NULL AND url != '' AND url != '#'
+            ORDER BY fetched_at DESC
+            LIMIT ?
+        """, (limit,)).fetchall()
+        return [{"id": r[0], "url": r[1], "source": r[2]} for r in rows]
+    finally:
+        conn.close()
+
+
+def batch_update_job_skills(updates: list):
+    """Bulk write (job_id, skills_str) pairs to DB."""
+    if not updates:
+        return
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        conn.executemany(
+            "UPDATE jobs SET description=?, skills=? WHERE id=?",
+            updates
+        )
+        conn.commit()
     finally:
         conn.close()
 
