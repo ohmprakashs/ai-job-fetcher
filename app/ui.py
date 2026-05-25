@@ -1,9 +1,13 @@
 from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify
 from job_agent import JobAIAgent
 from job_fetcher import find_common_jobs
-from job_db import init_db, mark_job_applied, get_job_applications_status, get_job_by_id, get_applied_count, get_applied_jobs, get_daily_applied_stats, backfill_skills_from_descriptions
+from job_db import (init_db, mark_job_applied, get_job_applications_status, get_job_by_id,
+                    get_applied_count, get_applied_jobs, get_daily_applied_stats,
+                    backfill_skills_from_descriptions, get_jobs_needing_jd_fetch,
+                    batch_update_job_skills, _extract_skills_from_text, update_job_description)
 import os
 import threading
+import time
 from auto_apply_bot import run_auto_apply
 from cv_generator import build_tailored_pdf, extract_skills_from_cv, extract_text_from_pdf, tailor_cv_smart
 from ai_matcher import generate_ai_match_report, generate_ats_scorecard
@@ -14,17 +18,43 @@ _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__, template_folder=os.path.join(_BASE_DIR, "templates"))
 app.secret_key = "secret_jobs_key"
 
-# Run skill backfill once on startup (background thread, non-blocking)
-def _startup_backfill():
+def _startup_background_work():
+    """On startup: backfill skills then batch-fetch missing JDs (throttled)."""
     try:
         init_db()
+        # Step 1: extract skills from all cached descriptions + snippets
         n = backfill_skills_from_descriptions()
         if n:
-            print(f"[startup] Backfilled skills for {n} jobs from cached descriptions.")
-    except Exception as e:
-        print(f"[startup] Backfill error: {e}")
+            print(f"[startup] Backfilled skills for {n} jobs.")
 
-threading.Thread(target=_startup_backfill, daemon=True).start()
+        # Step 2: fetch JDs for jobs that have a URL but no description yet
+        # Fetch up to 60 per startup, 1 per second to avoid rate limiting
+        jobs_to_fetch = get_jobs_needing_jd_fetch(limit=60)
+        if jobs_to_fetch:
+            print(f"[startup] Fetching JDs for {len(jobs_to_fetch)} jobs in background...")
+        fetched = 0
+        for job in jobs_to_fetch:
+            try:
+                time.sleep(1.2)   # ~50 req/min, well within rate limits
+                jd_text = scrape_jd_text(job["url"], job["source"].lower()) or ""
+                if jd_text and len(jd_text) > 100:
+                    extracted = _extract_skills_from_text(jd_text)
+                    skills_str = ",".join(sorted(set(extracted))) if extracted else ""
+                    batch_update_job_skills([(jd_text, skills_str, job["id"])])
+                    fetched += 1
+            except Exception:
+                pass
+        if fetched:
+            print(f"[startup] Fetched and indexed JDs for {fetched} jobs.")
+        # Step 3: second backfill pass after new JDs are cached
+        if fetched:
+            n2 = backfill_skills_from_descriptions()
+            if n2:
+                print(f"[startup] Post-fetch backfill updated {n2} more jobs.")
+    except Exception as e:
+        print(f"[startup] Background work error: {e}")
+
+threading.Thread(target=_startup_background_work, daemon=True).start()
 
 # Default skills for the UI (empty — skills are extracted from uploaded resume)
 DEFAULT_SKILLS = []
