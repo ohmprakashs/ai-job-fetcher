@@ -4,10 +4,13 @@ from job_fetcher import find_common_jobs
 from job_db import (init_db, mark_job_applied, get_job_applications_status, get_job_by_id,
                     get_applied_count, get_applied_jobs, get_daily_applied_stats,
                     backfill_skills_from_descriptions, get_jobs_needing_jd_fetch,
-                    batch_update_job_skills, _extract_skills_from_text, update_job_description)
+                    batch_update_job_skills, _extract_skills_from_text, update_job_description,
+                    check_and_mark_expired_jobs, get_new_jobs_count, update_application_status,
+                    mark_job_status, get_lifecycle_stats)
 import os
 import threading
 import time
+from datetime import datetime
 from auto_apply_bot import run_auto_apply
 from cv_generator import build_tailored_pdf, extract_skills_from_cv, extract_text_from_pdf, tailor_cv_smart
 from ai_matcher import generate_ai_match_report, generate_ats_scorecard
@@ -19,7 +22,7 @@ app = Flask(__name__, template_folder=os.path.join(_BASE_DIR, "templates"))
 app.secret_key = "secret_jobs_key"
 
 def _startup_background_work():
-    """On startup: backfill skills then batch-fetch missing JDs (throttled)."""
+    """On startup: backfill skills, fetch missing JDs, then run stale-job checker."""
     try:
         init_db()
         # Step 1: extract skills from all cached descriptions + snippets
@@ -28,14 +31,13 @@ def _startup_background_work():
             print(f"[startup] Backfilled skills for {n} jobs.")
 
         # Step 2: fetch JDs for jobs that have a URL but no description yet
-        # Fetch up to 60 per startup, 1 per second to avoid rate limiting
         jobs_to_fetch = get_jobs_needing_jd_fetch(limit=60)
         if jobs_to_fetch:
             print(f"[startup] Fetching JDs for {len(jobs_to_fetch)} jobs in background...")
         fetched = 0
         for job in jobs_to_fetch:
             try:
-                time.sleep(1.2)   # ~50 req/min, well within rate limits
+                time.sleep(1.2)
                 jd_text = scrape_jd_text(job["url"], job["source"].lower()) or ""
                 if jd_text and len(jd_text) > 100:
                     extracted = _extract_skills_from_text(jd_text)
@@ -46,11 +48,15 @@ def _startup_background_work():
                 pass
         if fetched:
             print(f"[startup] Fetched and indexed JDs for {fetched} jobs.")
-        # Step 3: second backfill pass after new JDs are cached
-        if fetched:
             n2 = backfill_skills_from_descriptions()
             if n2:
                 print(f"[startup] Post-fetch backfill updated {n2} more jobs.")
+
+        # Step 3: check for expired/filled jobs (throttled, 20 per startup)
+        result = check_and_mark_expired_jobs(limit=20)
+        if result["checked"]:
+            print(f"[lifecycle] Checked {result['checked']} jobs: "
+                  f"{result['expired']} expired, {result['still_active']} still active.")
     except Exception as e:
         print(f"[startup] Background work error: {e}")
 
@@ -138,6 +144,9 @@ def index():
     resume_path = os.path.join(_BASE_DIR, "..", "sample_cv.pdf")
     has_resume = os.path.exists(resume_path)
     applied_count = get_applied_count()
+    new_jobs_count = get_new_jobs_count(hours=24)
+    from datetime import timedelta
+    now_date = (datetime.utcnow() - timedelta(hours=24)).strftime('%Y-%m-%d')
 
     return render_template(
         'index.html',
@@ -152,6 +161,8 @@ def index():
         did_submit=did_submit,
         has_resume=has_resume,
         applied_count=applied_count,
+        new_jobs_count=new_jobs_count,
+        now_date=now_date,
     )
 
 
@@ -163,12 +174,60 @@ def apply_job_async():
         company = data.get('company', '')
         location = data.get('location', '')
         source = data.get('source', '')
-        
+
         init_db()
         mark_job_applied(title, company, location, source)
         applied_count = get_applied_count()
         return {"status": "success", "applied_count": applied_count}
     return {"status": "error"}, 400
+
+
+@app.route('/api/update-application-status', methods=['POST'])
+def api_update_application_status():
+    """Update application outcome for a job (shortlisted / rejected / no_response)."""
+    data = request.get_json() or {}
+    job_id = data.get('job_id')
+    status = data.get('status', '')
+    allowed = {'not_applied', 'applied', 'shortlisted', 'rejected', 'no_response'}
+    if not job_id or status not in allowed:
+        return jsonify({"status": "error", "message": "Invalid job_id or status"}), 400
+    init_db()
+    update_application_status(int(job_id), status)
+    return jsonify({"status": "success"})
+
+
+@app.route('/api/mark-job-status', methods=['POST'])
+def api_mark_job_status():
+    """Manually mark a job as expired / filled / active."""
+    data = request.get_json() or {}
+    job_id = data.get('job_id')
+    status = data.get('status', '')
+    allowed = {'active', 'expired', 'filled', 'closed'}
+    if not job_id or status not in allowed:
+        return jsonify({"status": "error", "message": "Invalid job_id or status"}), 400
+    init_db()
+    mark_job_status(int(job_id), status)
+    return jsonify({"status": "success"})
+
+
+@app.route('/api/lifecycle-stats')
+def api_lifecycle_stats():
+    """Return job lifecycle + application outcome stats as JSON."""
+    init_db()
+    stats = get_lifecycle_stats()
+    stats['new_24h'] = get_new_jobs_count(hours=24)
+    return jsonify(stats)
+
+
+@app.route('/api/check-expired-jobs', methods=['POST'])
+def api_check_expired_jobs():
+    """Admin endpoint to manually trigger a stale-job validation batch."""
+    limit = int(request.get_json(silent=True, force=True).get('limit', 20) if request.data else 20)
+    def _run():
+        result = check_and_mark_expired_jobs(limit=limit)
+        print(f"[lifecycle] Manual check: {result}")
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"status": "started", "limit": limit})
 
 
 @app.route('/applied-jobs')
@@ -214,6 +273,13 @@ def applied_jobs():
 
     # ── Full jobs table rows ──
     job_rows = ""
+    app_status_options = {
+        'not_applied': ('—', '#6b7280', '#f3f4f6'),
+        'applied':     ('📤 Applied', '#0a66c2', '#e0f2fe'),
+        'shortlisted': ('🌟 Shortlisted', '#059669', '#d1fae5'),
+        'rejected':    ('❌ Rejected', '#dc2626', '#fee2e2'),
+        'no_response': ('😶 No Response', '#92400e', '#fef3c7'),
+    }
     for i, job in enumerate(jobs, 1):
         score = job.get("match_score") or 0
         score_color = "#16a34a" if score >= 75 else "#ea580c" if score >= 50 else "#6b7280"
@@ -222,8 +288,20 @@ def applied_jobs():
         src = job.get('source', '')
         src_bg = "#e0f2fe" if src == "LinkedIn" else "#fef3c7"
         src_cl = "#0369a1" if src == "LinkedIn" else "#92400e"
+        job_id = job.get("id", "")
+
+        # Application status selector
+        cur_app_status = job.get("application_status") or "applied"
+        if cur_app_status not in app_status_options:
+            cur_app_status = "applied"
+        cur_label, cur_color, cur_bg = app_status_options[cur_app_status]
+        status_opts = ""
+        for val, (lbl, col, bg) in app_status_options.items():
+            sel = "selected" if val == cur_app_status else ""
+            status_opts += f'<option value="{val}" {sel}>{lbl}</option>'
+
         job_rows += f"""
-        <tr>
+        <tr id="job-row-{job_id}">
             <td style="color:#6b7280;font-size:.82rem;">{i}</td>
             <td><a href="{url}" target="_blank" style="color:#0a66c2;font-weight:600;">{job.get("title","")}</a></td>
             <td>{job.get("company","")}</td>
@@ -231,11 +309,23 @@ def applied_jobs():
             <td><span style="background:{src_bg};color:{src_cl};padding:2px 10px;border-radius:20px;font-size:.78rem;font-weight:600;">{src}</span></td>
             <td style="color:{score_color};font-weight:700;">{score}{'%' if score else '—'}</td>
             <td style="color:#6b7280;font-size:.83rem;">{applied_date}</td>
+            <td>
+              <select onchange="updateAppStatus({job_id}, this.value, this)"
+                style="border:1px solid #e5e7eb;border-radius:8px;padding:3px 8px;font-size:.78rem;
+                       background:{cur_bg};color:{cur_color};font-weight:600;cursor:pointer;">
+                {status_opts}
+              </select>
+            </td>
         </tr>"""
 
     linkedin_count = len(by_source.get("LinkedIn", []))
     naukri_count   = len(by_source.get("Naukri", []))
     days_active    = len(daily_stats)
+
+    lc = get_lifecycle_stats()
+    shortlisted_count = lc.get("shortlisted", 0)
+    rejected_count    = lc.get("rejected", 0)
+    no_response_count = lc.get("no_response", 0)
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -260,6 +350,8 @@ def applied_jobs():
   .stat.green .n{{color:#16a34a;}}
   .stat.orange .n{{color:#ea580c;}}
   .stat.purple .n{{color:#7c3aed;}}
+  .stat.red .n{{color:#dc2626;}}
+  .stat.amber .n{{color:#d97706;}}
   .section-title{{font-size:1rem;font-weight:800;color:#111;margin-bottom:12px;display:flex;align-items:center;gap:8px;}}
   .card{{background:#fff;border-radius:12px;box-shadow:0 1px 6px rgba(0,0,0,.07);margin-bottom:28px;overflow:hidden;}}
   table{{width:100%;border-collapse:collapse;}}
@@ -270,6 +362,8 @@ def applied_jobs():
   tr:hover td{{background:#f8fafc;}}
   .empty{{text-align:center;padding:50px 20px;color:#888;}}
   .empty .icon{{font-size:2.5rem;margin-bottom:10px;}}
+  .toast{{position:fixed;bottom:24px;right:24px;background:#111;color:#fff;padding:10px 20px;border-radius:10px;
+          font-size:.85rem;font-weight:600;display:none;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.18);}}
 </style>
 </head>
 <body>
@@ -289,6 +383,9 @@ def applied_jobs():
     <div class="stat green"><div class="n">{linkedin_count}</div><div class="l">LinkedIn</div></div>
     <div class="stat orange"><div class="n">{naukri_count}</div><div class="l">Naukri</div></div>
     <div class="stat purple"><div class="n">{days_active}</div><div class="l">Active Days</div></div>
+    <div class="stat green"><div class="n">{shortlisted_count}</div><div class="l">🌟 Shortlisted</div></div>
+    <div class="stat red"><div class="n">{rejected_count}</div><div class="l">❌ Rejected</div></div>
+    <div class="stat amber"><div class="n">{no_response_count}</div><div class="l">😶 No Response</div></div>
   </div>
 
   <!-- Daily breakdown -->
@@ -302,11 +399,47 @@ def applied_jobs():
   <!-- Full job list -->
   <div class="section-title">📋 All Applied Jobs</div>
   <div class="card">
-    {"<table><thead><tr><th>#</th><th>Job Title</th><th>Company</th><th>Location</th><th>Platform</th><th>ATS Score</th><th>Applied On</th></tr></thead><tbody>" + job_rows + "</tbody></table>"
+    {"<table><thead><tr><th>#</th><th>Job Title</th><th>Company</th><th>Location</th><th>Platform</th><th>ATS Score</th><th>Applied On</th><th>Outcome</th></tr></thead><tbody>" + job_rows + "</tbody></table>"
      if jobs else
      "<div class='empty'><div class='icon'>📋</div><p>No jobs marked as applied yet.</p><p style='margin-top:8px'><a href='/' style='color:#0a66c2'>Search jobs</a> and click <strong>Mark Applied</strong> on any job.</p></div>"}
   </div>
 </div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const appStatusColors = {{
+  not_applied:  {{ bg:'#f3f4f6', color:'#6b7280' }},
+  applied:      {{ bg:'#e0f2fe', color:'#0a66c2' }},
+  shortlisted:  {{ bg:'#d1fae5', color:'#059669' }},
+  rejected:     {{ bg:'#fee2e2', color:'#dc2626' }},
+  no_response:  {{ bg:'#fef3c7', color:'#92400e' }},
+}};
+
+function updateAppStatus(jobId, status, selectEl) {{
+  fetch('/api/update-application-status', {{
+    method: 'POST',
+    headers: {{ 'Content-Type': 'application/json' }},
+    body: JSON.stringify({{ job_id: jobId, status: status }})
+  }}).then(r => r.json()).then(d => {{
+    if (d.status === 'success') {{
+      const c = appStatusColors[status] || appStatusColors.applied;
+      selectEl.style.background = c.bg;
+      selectEl.style.color = c.color;
+      showToast('✅ Outcome updated');
+    }} else {{
+      showToast('❌ Failed to update');
+    }}
+  }}).catch(() => showToast('❌ Network error'));
+}}
+
+function showToast(msg) {{
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 2500);
+}}
+</script>
 </body>
 </html>"""
     return html

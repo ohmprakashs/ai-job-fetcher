@@ -362,6 +362,7 @@
             box-shadow: 0 2px 12px rgba(10,102,194,.12);
         }
         .job-card.applied { border-left: 3px solid #16a34a; }
+        .job-card.expired-card { border-left: 3px solid #dc2626; opacity: 0.75; }
 
         .card-top { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 10px; }
         .company-logo {
@@ -602,6 +603,14 @@
     <div class="navbar-inner">
         <div class="brand">🤖 AI Job<span> Matcher</span></div>
         <div style="margin-left:auto;display:flex;gap:16px;align-items:center;">
+            <!-- 🔔 New jobs notification bell -->
+            {% if new_jobs_count and new_jobs_count > 0 %}
+            <span id="new-jobs-bell" title="New jobs added in last 24h"
+                style="display:flex;align-items:center;gap:5px;color:#0a66c2;font-weight:700;font-size:.88rem;
+                       background:#e0f2fe;border:1px solid #bae6fd;border-radius:20px;padding:4px 12px;cursor:default;">
+                🔔 <span id="new-jobs-count">{{ new_jobs_count }}</span> New
+            </span>
+            {% endif %}
             <a href="/applied-jobs" id="applied-nav-link" style="display:flex;align-items:center;gap:6px;color:#16a34a;font-weight:700;font-size:.88rem;text-decoration:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:20px;padding:4px 14px;">
                 ✅ Applied
                 <span id="applied-nav-count" style="background:#16a34a;color:#fff;border-radius:20px;padding:1px 8px;font-size:.8rem;font-weight:800;">{{ applied_count }}</span>
@@ -744,7 +753,13 @@
         {% for job in jobs %}
         {% set score = job.match_score %}
         {% set score_cls = 'high' if score >= 75 else ('medium' if score >= 50 else 'low') %}
-        <div class="job-card {{ 'applied' if job.is_applied else '' }}">
+        <div class="job-card {{ 'applied' if job.is_applied else '' }} {{ 'expired-card' if job.status == 'expired' else '' }}">
+            {% if job.status == 'expired' %}
+            <div style="background:#fee2e2;color:#991b1b;font-size:.72rem;font-weight:700;
+                        padding:4px 14px;letter-spacing:.04em;text-transform:uppercase;">
+                ⚠️ This job may no longer be accepting applications
+            </div>
+            {% endif %}
             <div class="card-top">
                 <!-- Company logo placeholder -->
                 <div class="company-logo">
@@ -752,9 +767,15 @@
                 </div>
 
                 <div class="card-info">
-                    <div class="job-title"
-                        {% if job.url %}onclick="window.open('{{ job.url }}','_blank')"{% endif %}>
-                        {{ job.title }}
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                        <div class="job-title"
+                            {% if job.url %}onclick="window.open('{{ job.url }}','_blank')"{% endif %}>
+                            {{ job.title }}
+                        </div>
+                        {% if job.first_seen_at and job.first_seen_at[:10] >= (now_date | default('2000-01-01')) %}
+                        <span style="background:#e0f2fe;color:#0369a1;font-size:.68rem;font-weight:800;
+                                     padding:1px 8px;border-radius:20px;letter-spacing:.03em;">🆕 NEW</span>
+                        {% endif %}
                     </div>
                     <div class="job-company">{{ job.company }}</div>
 
