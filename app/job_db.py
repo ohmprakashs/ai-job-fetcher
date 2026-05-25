@@ -31,7 +31,7 @@ def init_db():
                        ("experience_min", "INTEGER"), ("experience_max", "INTEGER"),
                        ("posted_days_ago", "INTEGER"), ("posted_date", "TEXT"),
                        ("apply_type", "TEXT"), ("description", "TEXT"),
-                       ("snippet", "TEXT")]:
+                       ("snippet", "TEXT"), ("applied_at", "TEXT")]:
         try:
             c.execute(f"ALTER TABLE jobs ADD COLUMN {col} {ctype}")
         except sqlite3.OperationalError:
@@ -95,10 +95,12 @@ def mark_job_applied(title, company, location, source):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     try:
+        # Store IST timestamp (UTC+5:30) for daily tracking
+        now_ist = datetime.utcnow().strftime('%Y-%m-%d %H:%M')
         c.execute('''
-            UPDATE jobs SET is_applied = 1
+            UPDATE jobs SET is_applied = 1, applied_at = COALESCE(applied_at, ?)
             WHERE title=? AND company=? AND location=? AND source=?
-        ''', (title, company, location, source))
+        ''', (now_ist, title, company, location, source))
         conn.commit()
     finally:
         conn.close()
@@ -130,7 +132,7 @@ def get_applied_jobs():
     conn.row_factory = sqlite3.Row
     try:
         rows = conn.execute(
-            "SELECT * FROM jobs WHERE is_applied=1 ORDER BY fetched_at DESC"
+            "SELECT * FROM jobs WHERE is_applied=1 ORDER BY applied_at DESC, fetched_at DESC"
         ).fetchall()
         jobs = []
         for r in rows:
@@ -139,6 +141,25 @@ def get_applied_jobs():
             job['is_applied'] = True
             jobs.append(job)
         return jobs
+    finally:
+        conn.close()
+
+
+def get_daily_applied_stats():
+    """Return list of (date, count, sources) grouped by applied_at date, newest first."""
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        rows = conn.execute("""
+            SELECT
+                COALESCE(substr(applied_at,1,10), substr(fetched_at,1,10)) AS day,
+                COUNT(*) AS cnt,
+                GROUP_CONCAT(DISTINCT source) AS sources
+            FROM jobs
+            WHERE is_applied=1
+            GROUP BY day
+            ORDER BY day DESC
+        """).fetchall()
+        return [{"date": r[0], "count": r[1], "sources": r[2] or ""} for r in rows]
     finally:
         conn.close()
 
