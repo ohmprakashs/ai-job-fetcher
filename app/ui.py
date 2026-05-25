@@ -288,6 +288,102 @@ def generate_cv(job_id):
         return f"Failed to generate CV: {str(e)}", 500
 
 
+@app.route('/api/autocomplete', methods=['GET'])
+def autocomplete():
+    """Return autocomplete suggestions for designation, skills, and location."""
+    import sqlite3
+    from job_db import DB_PATH
+
+    # ── Static curated lists ─────────────────────────────────────────────────
+    DESIGNATIONS = sorted([
+        "DevOps Engineer", "Senior DevOps Engineer", "Lead DevOps Engineer",
+        "Site Reliability Engineer", "SRE", "Cloud Engineer", "Cloud Architect",
+        "Platform Engineer", "Infrastructure Engineer", "Software Engineer",
+        "Senior Software Engineer", "Full Stack Developer", "Backend Developer",
+        "Frontend Developer", "Data Engineer", "Data Scientist", "ML Engineer",
+        "MLOps Engineer", "Python Developer", "Java Developer", "Node.js Developer",
+        "React Developer", "Angular Developer", "iOS Developer", "Android Developer",
+        "Mobile Developer", "Kubernetes Engineer", "Solutions Architect",
+        "Security Engineer", "Network Engineer", "Systems Administrator",
+        "Database Administrator", "QA Engineer", "Test Automation Engineer",
+        "Scrum Master", "Product Manager", "Technical Program Manager",
+        "Engineering Manager", "CTO", "VP Engineering",
+    ])
+
+    SKILLS = sorted([
+        "Python", "Java", "Go", "Rust", "JavaScript", "TypeScript", "C++", "C#",
+        "Ruby", "PHP", "Swift", "Kotlin", "Scala", "R",
+        "Docker", "Kubernetes", "Helm", "Terraform", "Ansible", "Chef", "Puppet",
+        "AWS", "GCP", "Azure", "OpenStack", "VMware",
+        "CI/CD", "Jenkins", "GitHub Actions", "GitLab CI", "CircleCI", "ArgoCD",
+        "Prometheus", "Grafana", "Datadog", "New Relic", "ELK Stack", "Splunk",
+        "PagerDuty", "ServiceNow", "OpsGenie",
+        "Linux", "Ubuntu", "CentOS", "Windows Server", "macOS",
+        "Nginx", "Apache", "HAProxy", "Istio", "Envoy",
+        "PostgreSQL", "MySQL", "MongoDB", "Redis", "Elasticsearch", "Cassandra",
+        "Kafka", "RabbitMQ", "Celery",
+        "React", "Angular", "Vue.js", "Next.js", "Django", "Flask", "FastAPI",
+        "Spring Boot", "Node.js", "Express",
+        "Git", "GitHub", "GitLab", "Bitbucket", "Jira", "Confluence",
+        "Machine Learning", "Deep Learning", "TensorFlow", "PyTorch", "Scikit-learn",
+        "Spark", "Hadoop", "Airflow", "dbt",
+        "REST API", "GraphQL", "gRPC", "Microservices", "Serverless",
+        "DevOps", "SRE", "Platform Engineering", "FinOps",
+    ])
+
+    LOCATIONS = sorted([
+        "Bangalore", "Bengaluru", "Mumbai", "Pune", "Hyderabad", "Chennai",
+        "Delhi", "Noida", "Gurgaon", "Kolkata", "Ahmedabad", "Jaipur",
+        "Chandigarh", "Kochi", "Coimbatore", "Indore", "Bhubaneswar",
+        "Remote", "Hybrid", "Pan India",
+        # Global
+        "New York", "San Francisco", "Seattle", "Austin", "London",
+        "Singapore", "Dubai", "Toronto", "Berlin",
+    ])
+
+    # ── Augment with DB data ─────────────────────────────────────────────────
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        # Pull unique locations from DB jobs
+        db_locs = [r[0].strip() for r in conn.execute(
+            "SELECT DISTINCT location FROM jobs WHERE location IS NOT NULL AND location != '' AND location != 'N/A' ORDER BY location"
+        ).fetchall() if r[0] and len(r[0]) < 60]
+        # Pull unique skills from DB job tags (comma-separated)
+        db_skills_raw = conn.execute(
+            "SELECT skills FROM jobs WHERE skills IS NOT NULL AND skills != ''"
+        ).fetchall()
+        db_skills = set()
+        for (s,) in db_skills_raw:
+            for sk in s.split(","):
+                sk = sk.strip()
+                if 1 < len(sk) < 40:
+                    db_skills.add(sk.title())
+        conn.close()
+    except Exception:
+        db_locs, db_skills = [], set()
+
+    # Merge and deduplicate (case-insensitive)
+    locs_seen = {l.lower() for l in LOCATIONS}
+    merged_locs = list(LOCATIONS)
+    for l in db_locs:
+        if l.lower() not in locs_seen:
+            merged_locs.append(l)
+            locs_seen.add(l.lower())
+
+    skills_seen = {s.lower() for s in SKILLS}
+    merged_skills = list(SKILLS)
+    for sk in sorted(db_skills):
+        if sk.lower() not in skills_seen:
+            merged_skills.append(sk)
+            skills_seen.add(sk.lower())
+
+    return jsonify({
+        "designations": DESIGNATIONS,
+        "skills": merged_skills,
+        "locations": merged_locs,
+    })
+
+
 @app.route('/auto-apply', methods=['GET', 'POST'])
 def auto_apply_ui():
     message = ""
