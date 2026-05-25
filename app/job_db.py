@@ -114,6 +114,34 @@ def get_job_applications_status():
     finally:
         conn.close()
 
+
+def get_applied_count():
+    """Return total number of jobs marked as applied."""
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        return conn.execute("SELECT COUNT(*) FROM jobs WHERE is_applied=1").fetchone()[0]
+    finally:
+        conn.close()
+
+
+def get_applied_jobs():
+    """Return all jobs marked as applied, newest first."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            "SELECT * FROM jobs WHERE is_applied=1 ORDER BY fetched_at DESC"
+        ).fetchall()
+        jobs = []
+        for r in rows:
+            job = dict(r)
+            job['skills'] = job['skills'].split(',') if job['skills'] else []
+            job['is_applied'] = True
+            jobs.append(job)
+        return jobs
+    finally:
+        conn.close()
+
 def get_job_by_id(job_id):
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row

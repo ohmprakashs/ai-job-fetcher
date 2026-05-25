@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify
 from job_agent import JobAIAgent
 from job_fetcher import find_common_jobs
-from job_db import init_db, mark_job_applied, get_job_applications_status, get_job_by_id
+from job_db import init_db, mark_job_applied, get_job_applications_status, get_job_by_id, get_applied_count, get_applied_jobs
 import os
 import threading
 from auto_apply_bot import run_auto_apply
@@ -95,7 +95,8 @@ def index():
         
     resume_path = os.path.join(_BASE_DIR, "..", "sample_cv.pdf")
     has_resume = os.path.exists(resume_path)
-    
+    applied_count = get_applied_count()
+
     return render_template(
         'index.html',
         skills=skills,
@@ -108,6 +109,7 @@ def index():
         posted_within_days=posted_within_days,
         did_submit=did_submit,
         has_resume=has_resume,
+        applied_count=applied_count,
     )
 
 
@@ -122,8 +124,99 @@ def apply_job_async():
         
         init_db()
         mark_job_applied(title, company, location, source)
-        return {"status": "success"}
+        applied_count = get_applied_count()
+        return {"status": "success", "applied_count": applied_count}
     return {"status": "error"}, 400
+
+
+@app.route('/applied-jobs')
+def applied_jobs():
+    """Page showing all jobs marked as applied."""
+    init_db()
+    jobs = get_applied_jobs()
+    count = len(jobs)
+
+    # Group by source
+    by_source = {}
+    for job in jobs:
+        src = job.get('source', 'Unknown')
+        by_source.setdefault(src, []).append(job)
+
+    rows = ""
+    for i, job in enumerate(jobs, 1):
+        score_color = "#16a34a" if (job.get("match_score") or 0) >= 75 else "#ea580c" if (job.get("match_score") or 0) >= 50 else "#6b7280"
+        url = job.get("url") or "#"
+        rows += f"""
+        <tr>
+            <td>{i}</td>
+            <td><a href="{url}" target="_blank" style="color:#0a66c2;font-weight:600;">{job.get("title","")}</a></td>
+            <td>{job.get("company","")}</td>
+            <td>{job.get("location","")}</td>
+            <td><span style="background:{'#e0f2fe' if job.get('source')=='LinkedIn' else '#fef3c7'};
+                color:{'#0369a1' if job.get('source')=='LinkedIn' else '#92400e'};
+                padding:2px 10px;border-radius:20px;font-size:.78rem;font-weight:600;">{job.get("source","")}</span></td>
+            <td style="color:{score_color};font-weight:700;">{job.get("match_score") or "—"}{'%' if job.get("match_score") else ''}</td>
+            <td>{job.get("posted_date") or job.get("posted_days_ago", "")}</td>
+        </tr>"""
+
+    source_summary = " &nbsp;·&nbsp; ".join(
+        f"<strong>{v}</strong> {k}" for k, v in sorted(by_source.items(), key=lambda x: -len(x[1]))
+    )
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Applied Jobs — AI Job Matcher</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  *{{ box-sizing:border-box; margin:0; padding:0; }}
+  body{{ font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:#f4f6f8; color:#1a1a1a; }}
+  .topbar{{ background:#fff; border-bottom:1px solid #e0e0e0; padding:0 28px; height:56px; display:flex; align-items:center; gap:20px; }}
+  .topbar .brand{{ font-weight:800; font-size:1.1rem; color:#0a66c2; }}
+  .topbar a{{ color:#0a66c2; font-size:.88rem; font-weight:600; text-decoration:none; }}
+  .page{{ max-width:1100px; margin:32px auto; padding:0 20px; }}
+  .page-header{{ display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; flex-wrap:wrap; gap:12px; }}
+  .page-title{{ font-size:1.5rem; font-weight:800; }}
+  .badge{{ background:#0a66c2; color:#fff; border-radius:20px; padding:4px 14px; font-size:.9rem; font-weight:700; }}
+  .summary-bar{{ font-size:.88rem; color:#555; margin-bottom:20px; }}
+  .stats-row{{ display:flex; gap:16px; margin-bottom:28px; flex-wrap:wrap; }}
+  .stat{{ background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:16px 22px; min-width:130px; }}
+  .stat .n{{ font-size:1.6rem; font-weight:800; color:#0a66c2; }}
+  .stat .l{{ font-size:.75rem; color:#777; margin-top:2px; }}
+  .stat.green .n{{ color:#16a34a; }}
+  .stat.orange .n{{ color:#ea580c; }}
+  table{{ width:100%; border-collapse:collapse; background:#fff; border-radius:10px; overflow:hidden; box-shadow:0 1px 6px rgba(0,0,0,.08); }}
+  thead tr{{ background:#f8fafc; }}
+  th{{ padding:11px 14px; font-size:.78rem; font-weight:700; color:#555; text-transform:uppercase; letter-spacing:.04em; border-bottom:1px solid #e5e7eb; text-align:left; }}
+  td{{ padding:12px 14px; font-size:.87rem; border-bottom:1px solid #f0f0f0; }}
+  tr:last-child td{{ border-bottom:none; }}
+  tr:hover td{{ background:#f8fafc; }}
+  .empty{{ text-align:center; padding:60px 20px; color:#888; font-size:1rem; }}
+  .empty .icon{{ font-size:3rem; margin-bottom:12px; }}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="brand">🤖 AI Job Matcher</div>
+  <a href="/">← Back to Job Search</a>
+</div>
+<div class="page">
+  <div class="page-header">
+    <div class="page-title">✅ Applied Jobs</div>
+    <span class="badge">{count} Applied</span>
+  </div>
+  <div class="stats-row">
+    <div class="stat"><div class="n">{count}</div><div class="l">Total Applied</div></div>
+    <div class="stat green"><div class="n">{by_source.get("LinkedIn", []) and len(by_source["LinkedIn"]) or 0}</div><div class="l">LinkedIn</div></div>
+    <div class="stat orange"><div class="n">{by_source.get("Naukri", []) and len(by_source["Naukri"]) or 0}</div><div class="l">Naukri</div></div>
+  </div>
+  {"<div class='summary-bar'>Applied on: " + source_summary + "</div>" if source_summary else ""}
+  {"<table><thead><tr><th>#</th><th>Job Title</th><th>Company</th><th>Location</th><th>Platform</th><th>ATS Score</th><th>Posted</th></tr></thead><tbody>" + rows + "</tbody></table>" if jobs else "<div class='empty'><div class='icon'>📋</div><p>No jobs marked as applied yet.</p><p style='margin-top:8px'><a href='/' style='color:#0a66c2'>Search jobs</a> and click <strong>Mark Applied</strong> on any job.</p></div>"}
+</div>
+</body>
+</html>"""
+    return html
 
 @app.route('/apply', methods=['POST'])
 def apply_job():
