@@ -4,8 +4,23 @@ from datetime import datetime
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'jobs.db')
 
+def get_conn():
+    """
+    Return a SQLite connection with:
+    - 30s busy timeout so concurrent writers queue instead of crashing
+    - WAL journal mode: multiple readers + one writer never block each other
+    - check_same_thread=False: safe for Flask multi-thread mode
+    """
+    conn = sqlite3.connect(DB_PATH, timeout=30, check_same_thread=False)
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+    except sqlite3.OperationalError:
+        pass  # DB may be mid-transition; WAL will activate on next open
+    return conn
+
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     c = conn.cursor()
     c.execute('''
         CREATE TABLE IF NOT EXISTS jobs (
@@ -52,7 +67,7 @@ def init_db():
     conn.close()
 
 def insert_or_update_job(job):
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     c = conn.cursor()
     now = datetime.utcnow().isoformat()
     skills_str = ','.join(job.get('skills', []))
@@ -136,7 +151,7 @@ def update_job_description(job_id: int, description: str):
     """Cache fetched JD text and extract skills from it."""
     extracted = _extract_skills_from_text(description)
     skills_str = ",".join(extracted) if extracted else ""
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     c = conn.cursor()
     try:
         if skills_str:
@@ -155,7 +170,7 @@ def update_job_description(job_id: int, description: str):
 
 def backfill_skills_from_descriptions():
     """Backfill skills from description + snippet for ALL jobs lacking rich skills."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     c = conn.cursor()
     try:
         # Target every job that has some text (desc or snippet) but fewer than 3 skills
@@ -189,7 +204,7 @@ def backfill_skills_from_descriptions():
 
 def get_jobs_needing_jd_fetch(limit=60):
     """Return jobs that have a URL but no cached description — need JD fetch."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     try:
         rows = conn.execute("""
             SELECT id, url, source FROM jobs
@@ -207,7 +222,7 @@ def batch_update_job_skills(updates: list):
     """Bulk write (job_id, skills_str) pairs to DB."""
     if not updates:
         return
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     try:
         conn.executemany(
             "UPDATE jobs SET description=?, skills=? WHERE id=?",
@@ -218,7 +233,7 @@ def batch_update_job_skills(updates: list):
         conn.close()
 
 def mark_job_applied(title, company, location, source):
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     c = conn.cursor()
     try:
         # Store IST timestamp (UTC+5:30) for daily tracking
@@ -233,7 +248,7 @@ def mark_job_applied(title, company, location, source):
 
 def get_job_applications_status():
     """Returns a dict mapping (title, company, location, source) -> is_applied"""
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     c = conn.cursor()
     try:
         c.execute("SELECT title, company, location, source, is_applied FROM jobs")
@@ -245,7 +260,7 @@ def get_job_applications_status():
 
 def get_applied_count():
     """Return total number of jobs marked as applied."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     try:
         return conn.execute("SELECT COUNT(*) FROM jobs WHERE is_applied=1").fetchone()[0]
     finally:
@@ -254,7 +269,7 @@ def get_applied_count():
 
 def get_applied_jobs():
     """Return all jobs marked as applied, newest first."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     conn.row_factory = sqlite3.Row
     try:
         rows = conn.execute(
@@ -273,7 +288,7 @@ def get_applied_jobs():
 
 def get_daily_applied_stats():
     """Return list of (date, count, sources) grouped by applied_at date, newest first."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     try:
         rows = conn.execute("""
             SELECT
@@ -290,7 +305,7 @@ def get_daily_applied_stats():
         conn.close()
 
 def get_job_by_id(job_id):
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
     try:
@@ -322,7 +337,7 @@ _EXPIRED_SIGNALS = [
 
 def mark_job_status(job_id: int, status: str):
     """Update job status: 'active' | 'expired' | 'filled' | 'closed'."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     try:
         now = datetime.utcnow().isoformat()
         conn.execute(
@@ -339,7 +354,7 @@ def update_application_status(job_id: int, application_status: str):
     Update how the application turned out.
     Values: 'not_applied' | 'applied' | 'shortlisted' | 'rejected' | 'no_response'
     """
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     try:
         conn.execute(
             "UPDATE jobs SET application_status=? WHERE id=?",
@@ -352,7 +367,7 @@ def update_application_status(job_id: int, application_status: str):
 
 def get_new_jobs_count(hours: int = 24) -> int:
     """Count jobs added in the last N hours (uses first_seen_at)."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     try:
         cutoff = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
         return conn.execute("""
@@ -371,7 +386,7 @@ def get_stale_jobs_to_check(limit: int = 20) -> list:
     - not checked in last 48h (or never checked)
     - not applied (no point checking those)
     """
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     try:
         rows = conn.execute("""
             SELECT id, url, source, title, company FROM jobs
@@ -406,7 +421,7 @@ def check_and_mark_expired_jobs(limit: int = 20) -> dict:
     checked = expired = still_active = 0
     now = datetime.utcnow().isoformat()
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     try:
         for job in jobs:
             try:
@@ -443,7 +458,7 @@ def check_and_mark_expired_jobs(limit: int = 20) -> dict:
 
 def get_lifecycle_stats() -> dict:
     """Return counts for each job status for the UI."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     try:
         rows = conn.execute("""
             SELECT
@@ -469,7 +484,7 @@ def insert_jobs(jobs):
         insert_or_update_job(job)
 
 def get_jobs_from_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_conn()
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
     try:
