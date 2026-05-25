@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify
 from job_agent import JobAIAgent
 from job_fetcher import find_common_jobs
-from job_db import init_db, mark_job_applied, get_job_applications_status, get_job_by_id, get_applied_count, get_applied_jobs
+from job_db import init_db, mark_job_applied, get_job_applications_status, get_job_by_id, get_applied_count, get_applied_jobs, get_daily_applied_stats
 import os
 import threading
 from auto_apply_bot import run_auto_apply
@@ -131,9 +131,10 @@ def apply_job_async():
 
 @app.route('/applied-jobs')
 def applied_jobs():
-    """Page showing all jobs marked as applied."""
+    """Page showing all jobs marked as applied with daily breakdown."""
     init_db()
     jobs = get_applied_jobs()
+    daily_stats = get_daily_applied_stats()
     count = len(jobs)
 
     # Group by source
@@ -142,26 +143,57 @@ def applied_jobs():
         src = job.get('source', 'Unknown')
         by_source.setdefault(src, []).append(job)
 
-    rows = ""
-    for i, job in enumerate(jobs, 1):
-        score_color = "#16a34a" if (job.get("match_score") or 0) >= 75 else "#ea580c" if (job.get("match_score") or 0) >= 50 else "#6b7280"
-        url = job.get("url") or "#"
-        rows += f"""
+    # ── Daily log table rows ──
+    daily_rows = ""
+    for i, d in enumerate(daily_stats, 1):
+        bar_pct = min(100, int(d["count"] / max(1, max(x["count"] for x in daily_stats)) * 100))
+        src_badges = ""
+        for s in (d["sources"] or "").split(","):
+            s = s.strip()
+            if s:
+                bg = "#e0f2fe" if s == "LinkedIn" else "#fef3c7"
+                cl = "#0369a1" if s == "LinkedIn" else "#92400e"
+                src_badges += f'<span style="background:{bg};color:{cl};padding:1px 8px;border-radius:20px;font-size:.75rem;font-weight:600;margin-right:4px;">{s}</span>'
+        daily_rows += f"""
         <tr>
-            <td>{i}</td>
+            <td style="color:#6b7280;font-size:.82rem;">{i}</td>
+            <td style="font-weight:700;">{d["date"]}</td>
+            <td>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <div style="flex:1;background:#e5e7eb;border-radius:20px;height:8px;max-width:160px;">
+                        <div style="background:#0a66c2;width:{bar_pct}%;height:8px;border-radius:20px;"></div>
+                    </div>
+                    <span style="font-weight:800;color:#0a66c2;font-size:1.05rem;">{d["count"]}</span>
+                    <span style="color:#6b7280;font-size:.82rem;">job{'s' if d['count']!=1 else ''}</span>
+                </div>
+            </td>
+            <td>{src_badges}</td>
+        </tr>"""
+
+    # ── Full jobs table rows ──
+    job_rows = ""
+    for i, job in enumerate(jobs, 1):
+        score = job.get("match_score") or 0
+        score_color = "#16a34a" if score >= 75 else "#ea580c" if score >= 50 else "#6b7280"
+        url = job.get("url") or "#"
+        applied_date = (job.get("applied_at") or job.get("fetched_at") or "")[:10]
+        src = job.get('source', '')
+        src_bg = "#e0f2fe" if src == "LinkedIn" else "#fef3c7"
+        src_cl = "#0369a1" if src == "LinkedIn" else "#92400e"
+        job_rows += f"""
+        <tr>
+            <td style="color:#6b7280;font-size:.82rem;">{i}</td>
             <td><a href="{url}" target="_blank" style="color:#0a66c2;font-weight:600;">{job.get("title","")}</a></td>
             <td>{job.get("company","")}</td>
             <td>{job.get("location","")}</td>
-            <td><span style="background:{'#e0f2fe' if job.get('source')=='LinkedIn' else '#fef3c7'};
-                color:{'#0369a1' if job.get('source')=='LinkedIn' else '#92400e'};
-                padding:2px 10px;border-radius:20px;font-size:.78rem;font-weight:600;">{job.get("source","")}</span></td>
-            <td style="color:{score_color};font-weight:700;">{job.get("match_score") or "—"}{'%' if job.get("match_score") else ''}</td>
-            <td>{job.get("posted_date") or job.get("posted_days_ago", "")}</td>
+            <td><span style="background:{src_bg};color:{src_cl};padding:2px 10px;border-radius:20px;font-size:.78rem;font-weight:600;">{src}</span></td>
+            <td style="color:{score_color};font-weight:700;">{score}{'%' if score else '—'}</td>
+            <td style="color:#6b7280;font-size:.83rem;">{applied_date}</td>
         </tr>"""
 
-    source_summary = " &nbsp;·&nbsp; ".join(
-        f"<strong>{v}</strong> {k}" for k, v in sorted(by_source.items(), key=lambda x: -len(x[1]))
-    )
+    linkedin_count = len(by_source.get("LinkedIn", []))
+    naukri_count   = len(by_source.get("Naukri", []))
+    days_active    = len(daily_stats)
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -170,30 +202,32 @@ def applied_jobs():
 <title>Applied Jobs — AI Job Matcher</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-  *{{ box-sizing:border-box; margin:0; padding:0; }}
-  body{{ font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:#f4f6f8; color:#1a1a1a; }}
-  .topbar{{ background:#fff; border-bottom:1px solid #e0e0e0; padding:0 28px; height:56px; display:flex; align-items:center; gap:20px; }}
-  .topbar .brand{{ font-weight:800; font-size:1.1rem; color:#0a66c2; }}
-  .topbar a{{ color:#0a66c2; font-size:.88rem; font-weight:600; text-decoration:none; }}
-  .page{{ max-width:1100px; margin:32px auto; padding:0 20px; }}
-  .page-header{{ display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; flex-wrap:wrap; gap:12px; }}
-  .page-title{{ font-size:1.5rem; font-weight:800; }}
-  .badge{{ background:#0a66c2; color:#fff; border-radius:20px; padding:4px 14px; font-size:.9rem; font-weight:700; }}
-  .summary-bar{{ font-size:.88rem; color:#555; margin-bottom:20px; }}
-  .stats-row{{ display:flex; gap:16px; margin-bottom:28px; flex-wrap:wrap; }}
-  .stat{{ background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:16px 22px; min-width:130px; }}
-  .stat .n{{ font-size:1.6rem; font-weight:800; color:#0a66c2; }}
-  .stat .l{{ font-size:.75rem; color:#777; margin-top:2px; }}
-  .stat.green .n{{ color:#16a34a; }}
-  .stat.orange .n{{ color:#ea580c; }}
-  table{{ width:100%; border-collapse:collapse; background:#fff; border-radius:10px; overflow:hidden; box-shadow:0 1px 6px rgba(0,0,0,.08); }}
-  thead tr{{ background:#f8fafc; }}
-  th{{ padding:11px 14px; font-size:.78rem; font-weight:700; color:#555; text-transform:uppercase; letter-spacing:.04em; border-bottom:1px solid #e5e7eb; text-align:left; }}
-  td{{ padding:12px 14px; font-size:.87rem; border-bottom:1px solid #f0f0f0; }}
-  tr:last-child td{{ border-bottom:none; }}
-  tr:hover td{{ background:#f8fafc; }}
-  .empty{{ text-align:center; padding:60px 20px; color:#888; font-size:1rem; }}
-  .empty .icon{{ font-size:3rem; margin-bottom:12px; }}
+  *{{box-sizing:border-box;margin:0;padding:0;}}
+  body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f4f6f8;color:#1a1a1a;}}
+  .topbar{{background:#fff;border-bottom:1px solid #e0e0e0;padding:0 28px;height:56px;display:flex;align-items:center;gap:20px;}}
+  .brand{{font-weight:800;font-size:1.1rem;color:#0a66c2;}}
+  .topbar a{{color:#0a66c2;font-size:.88rem;font-weight:600;text-decoration:none;}}
+  .page{{max-width:1140px;margin:28px auto;padding:0 20px;}}
+  .page-header{{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px;}}
+  .page-title{{font-size:1.45rem;font-weight:800;}}
+  .badge{{background:#16a34a;color:#fff;border-radius:20px;padding:4px 16px;font-size:.9rem;font-weight:700;}}
+  .stats-row{{display:flex;gap:14px;margin-bottom:28px;flex-wrap:wrap;}}
+  .stat{{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px 20px;min-width:120px;}}
+  .stat .n{{font-size:1.6rem;font-weight:800;color:#0a66c2;}}
+  .stat .l{{font-size:.72rem;color:#777;margin-top:2px;text-transform:uppercase;letter-spacing:.04em;}}
+  .stat.green .n{{color:#16a34a;}}
+  .stat.orange .n{{color:#ea580c;}}
+  .stat.purple .n{{color:#7c3aed;}}
+  .section-title{{font-size:1rem;font-weight:800;color:#111;margin-bottom:12px;display:flex;align-items:center;gap:8px;}}
+  .card{{background:#fff;border-radius:12px;box-shadow:0 1px 6px rgba(0,0,0,.07);margin-bottom:28px;overflow:hidden;}}
+  table{{width:100%;border-collapse:collapse;}}
+  thead tr{{background:#f8fafc;}}
+  th{{padding:10px 14px;font-size:.75rem;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid #e5e7eb;text-align:left;}}
+  td{{padding:11px 14px;font-size:.87rem;border-bottom:1px solid #f0f0f0;vertical-align:middle;}}
+  tr:last-child td{{border-bottom:none;}}
+  tr:hover td{{background:#f8fafc;}}
+  .empty{{text-align:center;padding:50px 20px;color:#888;}}
+  .empty .icon{{font-size:2.5rem;margin-bottom:10px;}}
 </style>
 </head>
 <body>
@@ -203,16 +237,33 @@ def applied_jobs():
 </div>
 <div class="page">
   <div class="page-header">
-    <div class="page-title">✅ Applied Jobs</div>
-    <span class="badge">{count} Applied</span>
+    <div class="page-title">✅ Applied Jobs Log</div>
+    <span class="badge">{count} Total Applied</span>
   </div>
+
+  <!-- Summary stats -->
   <div class="stats-row">
     <div class="stat"><div class="n">{count}</div><div class="l">Total Applied</div></div>
-    <div class="stat green"><div class="n">{by_source.get("LinkedIn", []) and len(by_source["LinkedIn"]) or 0}</div><div class="l">LinkedIn</div></div>
-    <div class="stat orange"><div class="n">{by_source.get("Naukri", []) and len(by_source["Naukri"]) or 0}</div><div class="l">Naukri</div></div>
+    <div class="stat green"><div class="n">{linkedin_count}</div><div class="l">LinkedIn</div></div>
+    <div class="stat orange"><div class="n">{naukri_count}</div><div class="l">Naukri</div></div>
+    <div class="stat purple"><div class="n">{days_active}</div><div class="l">Active Days</div></div>
   </div>
-  {"<div class='summary-bar'>Applied on: " + source_summary + "</div>" if source_summary else ""}
-  {"<table><thead><tr><th>#</th><th>Job Title</th><th>Company</th><th>Location</th><th>Platform</th><th>ATS Score</th><th>Posted</th></tr></thead><tbody>" + rows + "</tbody></table>" if jobs else "<div class='empty'><div class='icon'>📋</div><p>No jobs marked as applied yet.</p><p style='margin-top:8px'><a href='/' style='color:#0a66c2'>Search jobs</a> and click <strong>Mark Applied</strong> on any job.</p></div>"}
+
+  <!-- Daily breakdown -->
+  <div class="section-title">📅 Daily Application Log</div>
+  <div class="card">
+    {"<table><thead><tr><th>#</th><th>Date</th><th>Applications</th><th>Platform</th></tr></thead><tbody>" + daily_rows + "</tbody></table>"
+     if daily_stats else
+     "<div class='empty'><div class='icon'>📅</div><p>No daily data yet.</p></div>"}
+  </div>
+
+  <!-- Full job list -->
+  <div class="section-title">📋 All Applied Jobs</div>
+  <div class="card">
+    {"<table><thead><tr><th>#</th><th>Job Title</th><th>Company</th><th>Location</th><th>Platform</th><th>ATS Score</th><th>Applied On</th></tr></thead><tbody>" + job_rows + "</tbody></table>"
+     if jobs else
+     "<div class='empty'><div class='icon'>📋</div><p>No jobs marked as applied yet.</p><p style='margin-top:8px'><a href='/' style='color:#0a66c2'>Search jobs</a> and click <strong>Mark Applied</strong> on any job.</p></div>"}
+  </div>
 </div>
 </body>
 </html>"""
