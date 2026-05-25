@@ -645,15 +645,18 @@
                 <input type="hidden" name="skills" id="skills-hidden"
                     value="{{ ', '.join(skills) }}">
             </div>
-            <!-- Location -->
-            <div class="sb-field">
-                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
-                <div class="ac-wrap">
-                    <input type="text" name="location" id="location"
-                        value="{{ location_filter if location_filter else '' }}"
-                        placeholder="City / Location"
+            <!-- Location — multi-chip -->
+            <div class="sb-field" style="align-items:flex-start; padding-top:0; padding-bottom:0;">
+                <svg width="16" height="16" style="margin-top:14px; flex-shrink:0;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+                <div class="ac-wrap skill-tags-wrap" id="loc-tags-wrap">
+                    <!-- location chips injected by JS -->
+                    <input type="text" id="loc-type-input"
+                        placeholder="City / Location — add multiple"
                         autocomplete="off">
                 </div>
+                <!-- hidden field holds comma-separated locations for form submit -->
+                <input type="hidden" name="location" id="location-hidden"
+                    value="{{ location_filter if location_filter else '' }}">
             </div>
             <button type="submit" class="sb-btn" id="fetch-btn">
                 <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
@@ -1111,7 +1114,7 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
     }
 
     makeAC('designation', 'ac-designation', function(){ return AC.designations || []; });
-    makeAC('location',    'ac-location',    function(){ return AC.locations    || []; });
+    // location now uses chip input — see initLocationChips() below
 
     // ── Skill tag-chip input ──────────────────────────────
     function initSkillChips() {
@@ -1227,7 +1230,109 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
 
         renderChips();
     }
-})();
+
+    // ── Location tag-chip input ───────────────────────────
+    function initLocationChips() {
+        var wrap   = document.getElementById('loc-tags-wrap');
+        var typeIn = document.getElementById('loc-type-input');
+        var hidden = document.getElementById('location-hidden');
+        var acList = document.getElementById('ac-location');
+        if (!wrap || !typeIn || !hidden) return;
+
+        var chips = [];
+
+        var initVal = hidden.value.trim();
+        if (initVal) {
+            chips = initVal.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+        }
+
+        function renderChips() {
+            wrap.querySelectorAll('.skill-tag-chip').forEach(function(el){ el.remove(); });
+            chips.forEach(function(loc, i) {
+                var chip = document.createElement('span');
+                chip.className = 'skill-tag-chip';
+                chip.innerHTML = loc + ' <span class="rm" data-i="' + i + '">×</span>';
+                chip.querySelector('.rm').addEventListener('click', function(){
+                    chips.splice(parseInt(this.getAttribute('data-i')), 1);
+                    hidden.value = chips.join(', ');
+                    renderChips();
+                });
+                wrap.insertBefore(chip, typeIn);
+            });
+        }
+
+        function addLocation(loc) {
+            loc = loc.trim();
+            if (!loc) return;
+            if (!chips.map(function(c){ return c.toLowerCase(); }).includes(loc.toLowerCase())) {
+                chips.push(loc);
+                hidden.value = chips.join(', ');
+                renderChips();
+            }
+            typeIn.value = '';
+            if (acList) acList.classList.remove('open');
+        }
+
+        function showLocAC() {
+            if (!acList) return;
+            var q = typeIn.value.trim().toLowerCase();
+            acList.innerHTML = '';
+            var allLocs = AC.locations || [];
+            var added = chips.map(function(c){ return c.toLowerCase(); });
+            var filtered;
+            if (q) {
+                filtered = allLocs.filter(function(s){
+                    return s.toLowerCase().includes(q) && !added.includes(s.toLowerCase());
+                }).slice(0, 10);
+            } else {
+                filtered = allLocs.filter(function(s){ return !added.includes(s.toLowerCase()); }).slice(0, 8);
+            }
+            if (!filtered.length) { acList.classList.remove('open'); return; }
+            filtered.forEach(function(item) {
+                var li = document.createElement('li');
+                li.className = 'ac-item';
+                if (q) {
+                    var idx = item.toLowerCase().indexOf(q);
+                    li.innerHTML = item.slice(0,idx) + '<mark>' + item.slice(idx,idx+q.length) + '</mark>' + item.slice(idx+q.length);
+                } else {
+                    li.textContent = item;
+                }
+                li.addEventListener('mousedown', function(e){ e.preventDefault(); addLocation(item); });
+                acList.appendChild(li);
+            });
+            positionList(typeIn, acList);
+            acList.classList.add('open');
+        }
+
+        typeIn.addEventListener('input', showLocAC);
+        typeIn.addEventListener('focus', showLocAC);
+        typeIn.addEventListener('blur',  function(){ setTimeout(function(){ if (acList) acList.classList.remove('open'); }, 150); });
+        typeIn.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ',') {
+                e.preventDefault();
+                var v = typeIn.value.replace(',','').trim();
+                if (v) addLocation(v);
+            } else if (e.key === 'Backspace' && !typeIn.value && chips.length) {
+                chips.pop();
+                hidden.value = chips.join(', ');
+                renderChips();
+            } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                var items = acList ? acList.querySelectorAll('.ac-item') : [];
+                var cur   = acList ? acList.querySelector('.active') : null;
+                var idx   = Array.from(items).indexOf(cur);
+                if (e.key === 'ArrowDown') idx = Math.min(idx+1, items.length-1);
+                else idx = Math.max(idx-1, 0);
+                items.forEach(function(it,i){ it.classList.toggle('active', i===idx); });
+                e.preventDefault();
+            } else if (e.key === 'Escape') {
+                if (acList) acList.classList.remove('open');
+            }
+        });
+
+        wrap.addEventListener('click', function(){ typeIn.focus(); });
+        renderChips();
+    }
+    initLocationChips();
 </script>
 </body>
 </html>
