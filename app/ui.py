@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify
 from job_agent import JobAIAgent
 from job_fetcher import find_common_jobs
-from job_db import init_db, mark_job_applied, get_job_applications_status, get_job_by_id, get_applied_count, get_applied_jobs, get_daily_applied_stats
+from job_db import init_db, mark_job_applied, get_job_applications_status, get_job_by_id, get_applied_count, get_applied_jobs, get_daily_applied_stats, backfill_skills_from_descriptions
 import os
 import threading
 from auto_apply_bot import run_auto_apply
@@ -12,7 +12,19 @@ from jd_scraper import scrape_jd_text
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 app = Flask(__name__, template_folder=os.path.join(_BASE_DIR, "templates"))
-app.secret_key = "secret_jobs_key"  # needed for flash messages if we use them
+app.secret_key = "secret_jobs_key"
+
+# Run skill backfill once on startup (background thread, non-blocking)
+def _startup_backfill():
+    try:
+        init_db()
+        n = backfill_skills_from_descriptions()
+        if n:
+            print(f"[startup] Backfilled skills for {n} jobs from cached descriptions.")
+    except Exception as e:
+        print(f"[startup] Backfill error: {e}")
+
+threading.Thread(target=_startup_backfill, daemon=True).start()
 
 # Default skills for the UI (empty — skills are extracted from uploaded resume)
 DEFAULT_SKILLS = []

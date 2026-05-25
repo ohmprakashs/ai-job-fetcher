@@ -81,13 +81,88 @@ def insert_or_update_job(job):
         conn.close()
 
 
+# ── Known skills list for extraction ──────────────────────────────────────
+KNOWN_SKILLS = [
+    "python","java","go","golang","rust","javascript","typescript","c++","c#",
+    "ruby","php","swift","kotlin","scala","r",
+    "docker","kubernetes","k8s","helm","terraform","ansible","chef","puppet",
+    "aws","gcp","azure","openstack","vmware",
+    "ci/cd","jenkins","github actions","gitlab ci","circleci","argocd","spinnaker",
+    "prometheus","grafana","datadog","new relic","elk","splunk","kibana","logstash",
+    "pagerduty","servicenow","opsgenie","victorops",
+    "linux","ubuntu","centos","rhel","windows","macos",
+    "nginx","apache","haproxy","istio","envoy",
+    "postgresql","mysql","mongodb","redis","elasticsearch","cassandra","oracle","mssql",
+    "kafka","rabbitmq","celery","sqs","pubsub",
+    "react","angular","vue","next.js","django","flask","fastapi",
+    "spring boot","node.js","express","laravel",
+    "git","github","gitlab","bitbucket","jira","confluence",
+    "machine learning","deep learning","tensorflow","pytorch","scikit-learn","mlops",
+    "spark","hadoop","airflow","dbt","databricks","snowflake",
+    "rest api","graphql","grpc","microservices","serverless",
+    "devops","sre","platform engineering","finops","devsecops",
+    "bash","shell","powershell","yaml","json","xml",
+    "vpc","iam","ec2","s3","lambda","eks","ecs","gke","aks",
+    "sonarqube","nexus","artifactory","vault","consul",
+    "selenium","pytest","junit","postman","jmeter",
+]
+
+def _extract_skills_from_text(text: str) -> list:
+    """Extract known skills that appear in the given text."""
+    import re
+    text_lower = text.lower()
+    found = []
+    for skill in KNOWN_SKILLS:
+        pattern = r'(?<![a-z0-9])' + re.escape(skill) + r'(?![a-z0-9])'
+        if re.search(pattern, text_lower):
+            found.append(skill)
+    return found
+
+
 def update_job_description(job_id: int, description: str):
-    """Cache fetched JD text so we don't re-scrape every time."""
+    """Cache fetched JD text and extract skills from it."""
+    extracted = _extract_skills_from_text(description)
+    skills_str = ",".join(extracted) if extracted else ""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     try:
-        c.execute("UPDATE jobs SET description=? WHERE id=?", (description, job_id))
+        if skills_str:
+            # Merge with any existing skills (avoid overwriting Naukri tags)
+            existing = c.execute("SELECT skills FROM jobs WHERE id=?", (job_id,)).fetchone()
+            existing_skills = set((existing[0] or "").split(",")) if existing else set()
+            existing_skills.discard("")
+            merged = ",".join(sorted(existing_skills | set(extracted)))
+            c.execute("UPDATE jobs SET description=?, skills=? WHERE id=?", (description, merged, job_id))
+        else:
+            c.execute("UPDATE jobs SET description=? WHERE id=?", (description, job_id))
         conn.commit()
+    finally:
+        conn.close()
+
+
+def backfill_skills_from_descriptions():
+    """One-time backfill: extract skills from cached descriptions for jobs with empty skills."""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    try:
+        rows = c.execute("""
+            SELECT id, description, snippet, skills FROM jobs
+            WHERE description != '' AND description IS NOT NULL
+            AND (skills IS NULL OR skills = '' OR skills = 'devops')
+        """).fetchall()
+        updated = 0
+        for row in rows:
+            job_id, desc, snippet, existing_skills = row
+            text = (desc or "") + " " + (snippet or "")
+            extracted = _extract_skills_from_text(text)
+            if extracted:
+                existing = set((existing_skills or "").split(","))
+                existing.discard("")
+                merged = ",".join(sorted(existing | set(extracted)))
+                c.execute("UPDATE jobs SET skills=? WHERE id=?", (merged, job_id))
+                updated += 1
+        conn.commit()
+        return updated
     finally:
         conn.close()
 
