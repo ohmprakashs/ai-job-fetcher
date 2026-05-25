@@ -87,14 +87,18 @@ class JobAIAgent:
                 job_snippet     = str(job.get("snippet")     or "").strip()
                 job_source      = str(job.get("source",   "") or "").lower()
 
-                # Only lazily fetch JDs for jobs whose title fully matches the
-                # designation — avoids fetching hundreds of JDs on every scoring run.
-                # "any()" would be too broad (hundreds of "Engineer" titles).
-                # "all()" limits fetches to jobs where every designation word appears.
-                title_has_designation = bool(self.designation) and all(
-                    p in str(job.get("title", "")).lower()
-                    for p in self.designation.replace(",", " ").split()
-                    if len(p) > 2
+                # Only lazily fetch JDs for jobs whose title fully matches at least
+                # ONE of the user's designations. With multi-designation chip input
+                # (e.g. "devops engineer, sre") we check each designation independently
+                # so a "DevOps Engineer" title correctly triggers a JD fetch.
+                desig_list = [d.strip() for d in self.designation.split(",") if d.strip()]
+                title_has_designation = bool(desig_list) and any(
+                    all(
+                        p in str(job.get("title", "")).lower()
+                        for p in d.split()
+                        if len(p) > 2
+                    )
+                    for d in desig_list
                 )
                 if (not job_description and job_source == "linkedin"
                         and job.get("url") and title_has_designation):
@@ -155,9 +159,8 @@ class JobAIAgent:
                     and not job_snippet           # already str(…or""), safe to bool
                 )
                 title_matches_desig = bool(self.designation) and any(
-                    p in job_title_lower
-                    for p in self.designation.replace(",", " ").split()
-                    if len(p) > 2
+                    any(p in job_title_lower for p in d.split() if len(p) > 2)
+                    for d in [x.strip() for x in self.designation.split(",") if x.strip()]
                 )
                 if no_real_data and title_matches_desig:
                     matched_skills = list(self.skills)
@@ -169,11 +172,14 @@ class JobAIAgent:
 
             desig_score = 0
             if self.designation:
-                desig_parts = self.designation.replace(",", " ").split()
-                if all(p in job_title_lower for p in desig_parts):
-                    desig_score = 25
-                elif len(desig_parts) > 1 and sum(1 for p in desig_parts if p in job_title_lower) >= len(desig_parts) / 2:
-                    desig_score = 10
+                # Score against each individual designation; take the best match
+                for d in [x.strip() for x in self.designation.split(",") if x.strip()]:
+                    d_parts = d.split()
+                    if all(p in job_title_lower for p in d_parts):
+                        desig_score = 25
+                        break
+                    elif len(d_parts) > 1 and sum(1 for p in d_parts if p in job_title_lower) >= len(d_parts) / 2:
+                        desig_score = max(desig_score, 10)
 
             score += desig_score
 
