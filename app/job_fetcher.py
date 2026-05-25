@@ -382,7 +382,7 @@ def fetch_linkedin_jobs(skills, location="", designation=""):
                     apply_type = "Easy Apply" if is_easy_apply else "Apply on company site"
                     
                     # LinkedIn cards don't provide explicit skill tags.
-                    # We approximate by seeing which of our search skills appear in the title or snippet.
+                    # Approximate by seeing which user skills appear in title/card text.
                     extracted_skills = []
                     search_text = (job_title + " " + card_text).lower()
                     for s in skills:
@@ -390,24 +390,14 @@ def fetch_linkedin_jobs(skills, location="", designation=""):
                         if re.search(r'(?<![a-z0-9])' + re.escape(s.lower()) + r'(?![a-z0-9])', search_text):
                             extracted_skills.append(s)
 
-                    # Try to fetch the real JD text via LinkedIn guest API (no auth needed).
-                    # This gives us the actual skill keywords from the job description.
-                    fetched_description = ""
-                    if job_url:
-                        try:
-                            from jd_scraper import scrape_jd_text as _scrape
-                            fetched_description = _scrape(job_url, "linkedin") or ""
-                        except Exception:
-                            pass
-
                     jobs.append(
                         {
                             "title": job_title or "N/A",
                             "company": company_tag.text.strip() if company_tag else "N/A",
                             "location": location_tag.text.strip() if location_tag else "N/A",
                             "skills": extracted_skills,
-                            "snippet": card_text,          # card text available for scoring
-                            "description": fetched_description,  # full JD text if fetchable
+                            "snippet": card_text,          # card text for scoring fallback
+                            "description": "",             # JD text fetched lazily in job_agent
                             "url": job_url,
                             "source": "LinkedIn",
                             "apply_type": apply_type,
