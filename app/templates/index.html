@@ -601,7 +601,11 @@
 <nav class="navbar">
     <div class="navbar-inner">
         <div class="brand">🤖 AI Job<span> Matcher</span></div>
-        <div style="margin-left:auto;display:flex;gap:12px;align-items:center;">
+        <div style="margin-left:auto;display:flex;gap:16px;align-items:center;">
+            <a href="/applied-jobs" id="applied-nav-link" style="display:flex;align-items:center;gap:6px;color:#16a34a;font-weight:700;font-size:.88rem;text-decoration:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:20px;padding:4px 14px;">
+                ✅ Applied
+                <span id="applied-nav-count" style="background:#16a34a;color:#fff;border-radius:20px;padding:1px 8px;font-size:.8rem;font-weight:800;">{{ applied_count }}</span>
+            </a>
             <a href="/auto-apply" style="color:#0a66c2;font-weight:600;font-size:.88rem;">
                 🤖 Auto-Apply Bot
             </a>
@@ -718,6 +722,11 @@
             <div class="stat-box green"><div class="sv">{{ strong }}</div><div class="sl">Strong Match ≥75%</div></div>
             <div class="stat-box orange"><div class="sv">{{ moderate }}</div><div class="sl">Good Match ≥50%</div></div>
             <div class="stat-box purple"><div class="sv">{{ linkedin }}</div><div class="sl">LinkedIn Jobs</div></div>
+            {% set applied_in_results = jobs|selectattr('is_applied')|list|length %}
+            <div class="stat-box" style="cursor:pointer;" onclick="window.location='/applied-jobs'">
+                <div class="sv" id="stat-applied" style="color:#16a34a;">{{ applied_count }}</div>
+                <div class="sl">✅ Total Applied</div>
+            </div>
         </div>
 
         <!-- Results header -->
@@ -954,10 +963,17 @@ function markApplied(title, company, location, source, btn) {
         method:'POST',
         headers:{'Content-Type':'application/json'},
         body: JSON.stringify({title:title, company:company, location:location, source:source})
-    }).then(function(){
+    }).then(r => r.json()).then(function(data){
         btn.className = 'btn btn-applied';
         btn.textContent = '✅ Applied';
         toast('Marked as applied!', 'success');
+        // Update live counters
+        if (data && data.applied_count !== undefined) {
+            var navBadge = document.getElementById('applied-nav-count');
+            var statBox = document.getElementById('stat-applied');
+            if (navBadge) navBadge.textContent = data.applied_count;
+            if (statBox) statBox.textContent = data.applied_count;
+        }
     });
 }
 
