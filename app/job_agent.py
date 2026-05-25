@@ -190,6 +190,10 @@ class JobAIAgent:
             if not self.skills and not self.designation:
                 job['match_score'] = 100
                 filtered_jobs.append(job)
+            elif not self.skills:
+                # No skills provided — show all jobs that passed location/experience filter.
+                # Score is designation-based only (0–25); include everything.
+                filtered_jobs.append(job)
             elif job["match_score"] >= 35:
                 # Show jobs with >= 35 match — surfaces adjacent roles (e.g. SRE vs DevOps)
                 filtered_jobs.append(job)
