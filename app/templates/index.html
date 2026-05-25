@@ -1054,11 +1054,13 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
 (function() {
     var AC = { designations: [], skills: [], locations: [] };
 
-    // Load suggestions from API once
+    // Load suggestions from API — closures read AC lazily, so all
+    // init functions can be called eagerly; the data is available
+    // by the time the user first types.
     fetch('/api/autocomplete')
         .then(function(r){ return r.json(); })
-        .then(function(d){ AC = d; initSkillChips(); })
-        .catch(function(){ initSkillChips(); });
+        .then(function(d){ AC = d; })
+        .catch(function(){});
 
     // ── Generic single-value autocomplete ───────────────
     function positionList(input, list) {
@@ -1078,14 +1080,23 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
             var q = input.value.trim().toLowerCase();
             list.innerHTML = '';
             active = -1;
-            if (!q || !items.length) { list.classList.remove('open'); return; }
-            var filtered = items.filter(function(x){ return x.toLowerCase().includes(q); }).slice(0, 10);
+            var filtered;
+            if (q) {
+                filtered = items.filter(function(x){ return x.toLowerCase().includes(q); }).slice(0, 10);
+            } else {
+                // Show top 8 suggestions when field is focused but empty
+                filtered = items.slice(0, 8);
+            }
             if (!filtered.length) { list.classList.remove('open'); return; }
-            filtered.forEach(function(item, i) {
+            filtered.forEach(function(item) {
                 var li = document.createElement('li');
                 li.className = 'ac-item';
-                var idx = item.toLowerCase().indexOf(q);
-                li.innerHTML = item.slice(0,idx) + '<mark>' + item.slice(idx, idx+q.length) + '</mark>' + item.slice(idx+q.length);
+                if (q) {
+                    var idx = item.toLowerCase().indexOf(q);
+                    li.innerHTML = item.slice(0,idx) + '<mark>' + item.slice(idx, idx+q.length) + '</mark>' + item.slice(idx+q.length);
+                } else {
+                    li.textContent = item;
+                }
                 li.addEventListener('mousedown', function(e){
                     e.preventDefault();
                     input.value = item;
@@ -1098,7 +1109,7 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
         }
 
         input.addEventListener('input', function(){ show(getItems()); });
-        input.addEventListener('focus', function(){ if (input.value.trim()) show(getItems()); });
+        input.addEventListener('focus', function(){ show(getItems()); });   // always show on focus
         input.addEventListener('blur',  function(){ setTimeout(function(){ list.classList.remove('open'); }, 150); });
         input.addEventListener('keydown', function(e) {
             var items = list.querySelectorAll('.ac-item');
@@ -1114,10 +1125,13 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
     }
 
     makeAC('designation', 'ac-designation', function(){ return AC.designations || []; });
-    // location now uses chip input — see initLocationChips() below
+    // location uses chip input — see initLocationChips() below
 
     // ── Skill tag-chip input ──────────────────────────────
+    var _skillChipsInit = false;
     function initSkillChips() {
+        if (_skillChipsInit) return;   // guard against double-init
+        _skillChipsInit = true;
         var wrap    = document.getElementById('skill-tags-wrap');
         var typeIn  = document.getElementById('skill-type-input');
         var hidden  = document.getElementById('skills-hidden');
@@ -1232,7 +1246,10 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
     }
 
     // ── Location tag-chip input ───────────────────────────
+    var _locChipsInit = false;
     function initLocationChips() {
+        if (_locChipsInit) return;
+        _locChipsInit = true;
         var wrap   = document.getElementById('loc-tags-wrap');
         var typeIn = document.getElementById('loc-type-input');
         var hidden = document.getElementById('location-hidden');
@@ -1332,7 +1349,10 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
         wrap.addEventListener('click', function(){ typeIn.focus(); });
         renderChips();
     }
+
+    // ── Initialise all inputs eagerly ─────────────────────
+    initSkillChips();
     initLocationChips();
-</script>
+})();</script>
 </body>
 </html>
