@@ -27,15 +27,26 @@ def init_db():
     ''')
     
     # Run migrations if table already existed without new columns
-    for col, ctype in [("url", "TEXT"), ("is_applied", "INTEGER DEFAULT 0"), 
+    for col, ctype in [("url", "TEXT"), ("is_applied", "INTEGER DEFAULT 0"),
                        ("experience_min", "INTEGER"), ("experience_max", "INTEGER"),
                        ("posted_days_ago", "INTEGER"), ("posted_date", "TEXT"),
                        ("apply_type", "TEXT"), ("description", "TEXT"),
-                       ("snippet", "TEXT"), ("applied_at", "TEXT")]:
+                       ("snippet", "TEXT"), ("applied_at", "TEXT"),
+                       # Lifecycle columns
+                       ("status", "TEXT DEFAULT 'active'"),
+                       ("first_seen_at", "TEXT"),
+                       ("last_checked_at", "TEXT"),
+                       ("application_status", "TEXT DEFAULT 'not_applied'")]:
         try:
             c.execute(f"ALTER TABLE jobs ADD COLUMN {col} {ctype}")
         except sqlite3.OperationalError:
-            pass # Column might already exist
+            pass  # Column already exists
+
+    # Backfill first_seen_at from fetched_at for older rows
+    c.execute("""
+        UPDATE jobs SET first_seen_at = fetched_at
+        WHERE first_seen_at IS NULL AND fetched_at IS NOT NULL
+    """)
 
     conn.commit()
     conn.close()
@@ -49,8 +60,8 @@ def insert_or_update_job(job):
         c.execute('''
             INSERT INTO jobs (title, company, location, skills, source, fetched_at, url,
                               experience_min, experience_max, posted_days_ago, posted_date,
-                              description, snippet)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                              description, snippet, first_seen_at, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
             ON CONFLICT(title, company, location, source) DO UPDATE SET
                 skills=excluded.skills,
                 fetched_at=excluded.fetched_at,
@@ -60,7 +71,8 @@ def insert_or_update_job(job):
                 posted_days_ago=excluded.posted_days_ago,
                 posted_date=excluded.posted_date,
                 description=COALESCE(NULLIF(excluded.description,''), jobs.description),
-                snippet=COALESCE(NULLIF(excluded.snippet,''), jobs.snippet)
+                snippet=COALESCE(NULLIF(excluded.snippet,''), jobs.snippet),
+                status=CASE WHEN jobs.status='expired' THEN 'active' ELSE jobs.status END
         ''', (
             job.get('title', ''),
             job.get('company', ''),
@@ -75,6 +87,7 @@ def insert_or_update_job(job):
             job.get('posted_date'),
             job.get('description', '') or '',
             job.get('snippet', '') or '',
+            now,  # first_seen_at — ignored on conflict, keeps original value
         ))
         conn.commit()
     finally:
@@ -288,6 +301,166 @@ def get_job_by_id(job_id):
         job = dict(row)
         job['skills'] = job['skills'].split(',') if job['skills'] else []
         return job
+    finally:
+        conn.close()
+
+# ── Job lifecycle helpers ─────────────────────────────────────────────────────
+
+# Phrases that indicate a job is no longer accepting applications
+_EXPIRED_SIGNALS = [
+    "no longer accepting applications",
+    "position has been filled",
+    "this job is no longer available",
+    "job has expired",
+    "job posting has expired",
+    "application deadline has passed",
+    "this listing has been removed",
+    "this job has been closed",
+    "applications are closed",
+    "not accepting applications",
+]
+
+def mark_job_status(job_id: int, status: str):
+    """Update job status: 'active' | 'expired' | 'filled' | 'closed'."""
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        now = datetime.utcnow().isoformat()
+        conn.execute(
+            "UPDATE jobs SET status=?, last_checked_at=? WHERE id=?",
+            (status, now, job_id)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def update_application_status(job_id: int, application_status: str):
+    """
+    Update how the application turned out.
+    Values: 'not_applied' | 'applied' | 'shortlisted' | 'rejected' | 'no_response'
+    """
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        conn.execute(
+            "UPDATE jobs SET application_status=? WHERE id=?",
+            (application_status, job_id)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_new_jobs_count(hours: int = 24) -> int:
+    """Count jobs added in the last N hours (uses first_seen_at)."""
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        cutoff = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
+        return conn.execute("""
+            SELECT COUNT(*) FROM jobs
+            WHERE status='active'
+            AND first_seen_at >= datetime(?, '-' || ? || ' hours')
+        """, (cutoff, str(hours))).fetchone()[0]
+    finally:
+        conn.close()
+
+
+def get_stale_jobs_to_check(limit: int = 20) -> list:
+    """
+    Return jobs that should be re-validated:
+    - active, have a URL
+    - not checked in last 48h (or never checked)
+    - not applied (no point checking those)
+    """
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        rows = conn.execute("""
+            SELECT id, url, source, title, company FROM jobs
+            WHERE status = 'active'
+            AND url IS NOT NULL AND url != '' AND url != '#'
+            AND is_applied = 0
+            AND (
+                last_checked_at IS NULL
+                OR last_checked_at < datetime('now', '-48 hours')
+            )
+            ORDER BY fetched_at ASC
+            LIMIT ?
+        """, (limit,)).fetchall()
+        return [{"id": r[0], "url": r[1], "source": r[2],
+                 "title": r[3], "company": r[4]} for r in rows]
+    finally:
+        conn.close()
+
+
+def check_and_mark_expired_jobs(limit: int = 20) -> dict:
+    """
+    Background checker: fetch JD text for stale jobs, detect expired signals,
+    mark status accordingly. Returns summary dict.
+    """
+    import time
+    try:
+        from jd_scraper import scrape_jd_text
+    except ImportError:
+        return {"checked": 0, "expired": 0, "still_active": 0}
+
+    jobs = get_stale_jobs_to_check(limit=limit)
+    checked = expired = still_active = 0
+    now = datetime.utcnow().isoformat()
+
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        for job in jobs:
+            try:
+                time.sleep(1.5)
+                jd_text = scrape_jd_text(job["url"], job["source"].lower()) or ""
+                jd_lower = jd_text.lower()
+
+                # Determine new status
+                if not jd_text or len(jd_text) < 30:
+                    new_status = "expired"   # page returned nothing — likely removed
+                elif any(sig in jd_lower for sig in _EXPIRED_SIGNALS):
+                    new_status = "expired"
+                else:
+                    new_status = "active"
+
+                conn.execute(
+                    "UPDATE jobs SET status=?, last_checked_at=? WHERE id=?",
+                    (new_status, now, job["id"])
+                )
+                checked += 1
+                if new_status == "expired":
+                    expired += 1
+                    print(f"[lifecycle] Expired: {job['title']} @ {job['company']}")
+                else:
+                    still_active += 1
+            except Exception:
+                pass
+        conn.commit()
+    finally:
+        conn.close()
+
+    return {"checked": checked, "expired": expired, "still_active": still_active}
+
+
+def get_lifecycle_stats() -> dict:
+    """Return counts for each job status for the UI."""
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        rows = conn.execute("""
+            SELECT
+                COUNT(*) total,
+                SUM(CASE WHEN status='active' THEN 1 ELSE 0 END) active,
+                SUM(CASE WHEN status='expired' THEN 1 ELSE 0 END) expired,
+                SUM(CASE WHEN status='filled' THEN 1 ELSE 0 END) filled,
+                SUM(CASE WHEN application_status='shortlisted' THEN 1 ELSE 0 END) shortlisted,
+                SUM(CASE WHEN application_status='rejected' THEN 1 ELSE 0 END) rejected,
+                SUM(CASE WHEN application_status='no_response' THEN 1 ELSE 0 END) no_response
+            FROM jobs
+        """).fetchone()
+        return {
+            "total": rows[0] or 0, "active": rows[1] or 0, "expired": rows[2] or 0,
+            "filled": rows[3] or 0, "shortlisted": rows[4] or 0,
+            "rejected": rows[5] or 0, "no_response": rows[6] or 0,
+        }
     finally:
         conn.close()
 
