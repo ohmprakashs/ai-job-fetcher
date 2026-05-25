@@ -79,9 +79,14 @@
             gap: 0;
             background: #fff;
             border-radius: 6px;
-            overflow: hidden;
+            overflow: visible;        /* must NOT be hidden — clips autocomplete dropdowns */
             box-shadow: 0 2px 12px rgba(0,0,0,.18);
+            /* keep rounded corners via outline clip on the box itself */
+            clip-path: none;
         }
+        /* Apply border-radius to first/last children instead of overflow:hidden on parent */
+        .search-bar .sb-field:first-child  { border-radius: 6px 0 0 6px; overflow: visible; }
+        .search-bar .sb-btn                { border-radius: 0 6px 6px 0; }
         .search-bar .sb-field {
             flex: 1;
             display: flex;
@@ -108,18 +113,16 @@
         .ac-wrap { position: relative; flex: 1; display: flex; align-items: center; }
         .ac-wrap input { width: 100%; }
         .ac-list {
-            position: absolute;
-            top: calc(100% + 4px);
-            left: -16px;
-            right: -16px;
+            position: fixed;          /* fixed escapes ALL overflow:hidden ancestors */
             background: #fff;
             border: 1px solid #d1d5db;
             border-radius: 8px;
-            box-shadow: 0 8px 24px rgba(0,0,0,.14);
+            box-shadow: 0 8px 24px rgba(0,0,0,.18);
             max-height: 240px;
             overflow-y: auto;
-            z-index: 999;
+            z-index: 9999;
             display: none;
+            min-width: 220px;
         }
         .ac-list.open { display: block; }
         .ac-item {
@@ -589,6 +592,10 @@
 </head>
 <body>
 <div id="toast-container"></div>
+<!-- Autocomplete dropdowns — placed at body root to escape all overflow:hidden -->
+<ul class="ac-list" id="ac-designation"></ul>
+<ul class="ac-list" id="ac-location"></ul>
+<ul class="ac-list" id="ac-skills"></ul>
 
 <!-- ═══════════ NAVBAR ═══════════ -->
 <nav class="navbar">
@@ -619,7 +626,6 @@
                         value="{{ designation_filter if designation_filter else '' }}"
                         placeholder="Job title / designation"
                         autocomplete="off">
-                    <ul class="ac-list" id="ac-designation"></ul>
                 </div>
             </div>
             <!-- Skills tag input -->
@@ -630,7 +636,6 @@
                     <input type="text" id="skill-type-input"
                         placeholder="Skills — type to add"
                         autocomplete="off">
-                    <ul class="ac-list" id="ac-skills"></ul>
                 </div>
                 <!-- hidden field that holds the real comma-separated value submitted -->
                 <input type="hidden" name="skills" id="skills-hidden"
@@ -644,7 +649,6 @@
                         value="{{ location_filter if location_filter else '' }}"
                         placeholder="City / Location"
                         autocomplete="off">
-                    <ul class="ac-list" id="ac-location"></ul>
                 </div>
             </div>
             <button type="submit" class="sb-btn" id="fetch-btn">
@@ -1038,6 +1042,13 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
         .catch(function(){ initSkillChips(); });
 
     // ── Generic single-value autocomplete ───────────────
+    function positionList(input, list) {
+        var r = input.getBoundingClientRect();
+        list.style.top   = (r.bottom + 4) + 'px';
+        list.style.left  = r.left + 'px';
+        list.style.width = r.width + 'px';
+    }
+
     function makeAC(inputId, listId, getItems) {
         var input = document.getElementById(inputId);
         var list  = document.getElementById(listId);
@@ -1063,6 +1074,7 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
                 });
                 list.appendChild(li);
             });
+            positionList(input, list);
             list.classList.add('open');
         }
 
@@ -1164,6 +1176,7 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
                 li.addEventListener('mousedown', function(e){ e.preventDefault(); addSkill(item); });
                 acList.appendChild(li);
             });
+            positionList(typeIn, acList);
             acList.classList.add('open');
         }
 
