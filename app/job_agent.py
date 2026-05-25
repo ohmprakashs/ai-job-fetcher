@@ -82,16 +82,27 @@ class JobAIAgent:
                 # LinkedIn card pages don't include skill tags. When a job
                 # has no cached description, fetch it now (fast HTTP GET) and
                 # cache it so we only do this once per job.
-                job_description = str(job.get("description", "") or "").strip()
-                job_source = str(job.get("source", "")).lower()
+                # Guard: use `or ""` to safely convert DB NULLs (Python None) to ""
+                job_description = str(job.get("description") or "").strip()
+                job_snippet     = str(job.get("snippet")     or "").strip()
+                job_source      = str(job.get("source",   "") or "").lower()
 
-                if not job_description and job_source == "linkedin" and job.get("url"):
+                # Only lazily fetch JDs for jobs whose title fully matches the
+                # designation — avoids fetching hundreds of JDs on every scoring run.
+                # "any()" would be too broad (hundreds of "Engineer" titles).
+                # "all()" limits fetches to jobs where every designation word appears.
+                title_has_designation = bool(self.designation) and all(
+                    p in str(job.get("title", "")).lower()
+                    for p in self.designation.replace(",", " ").split()
+                    if len(p) > 2
+                )
+                if (not job_description and job_source == "linkedin"
+                        and job.get("url") and title_has_designation):
                     try:
                         from jd_scraper import scrape_jd_text
                         fetched = scrape_jd_text(job["url"], "linkedin") or ""
                         if fetched:
                             job_description = fetched
-                            # Cache so subsequent scoring reuses it
                             if job.get("id"):
                                 update_job_description(job["id"], fetched)
                     except Exception:
@@ -109,12 +120,13 @@ class JobAIAgent:
                 )
 
                 # Build the broadest possible search text
+                # Use `or ""` on every field to guard against DB NULLs
                 search_text = " ".join(filter(None, [
                     job_title_lower,
                     "" if skills_are_mirrors else " ".join(job_required_skills),
                     job_description.lower(),
-                    str(job.get("snippet", "")).lower(),
-                    str(job.get("company", "")).lower(),
+                    job_snippet.lower(),
+                    str(job.get("company") or "").lower(),
                 ]))
 
                 def _skill_in_text(skill, text):
@@ -140,7 +152,7 @@ class JobAIAgent:
                 no_real_data = (
                     (len(job_required_skills) == 0 or skills_are_mirrors)
                     and not job_description
-                    and not str(job.get("snippet", "")).strip()
+                    and not job_snippet           # already str(…or""), safe to bool
                 )
                 title_matches_desig = bool(self.designation) and any(
                     p in job_title_lower
