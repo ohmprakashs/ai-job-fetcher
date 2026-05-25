@@ -103,6 +103,65 @@
             background: transparent;
         }
         .search-bar input::placeholder { color: #999; }
+
+        /* ─── AUTOCOMPLETE DROPDOWN ──────────────────── */
+        .ac-wrap { position: relative; flex: 1; display: flex; align-items: center; }
+        .ac-wrap input { width: 100%; }
+        .ac-list {
+            position: absolute;
+            top: calc(100% + 4px);
+            left: -16px;
+            right: -16px;
+            background: #fff;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            box-shadow: 0 8px 24px rgba(0,0,0,.14);
+            max-height: 240px;
+            overflow-y: auto;
+            z-index: 999;
+            display: none;
+        }
+        .ac-list.open { display: block; }
+        .ac-item {
+            padding: 9px 16px;
+            font-size: .875rem;
+            color: #1a1a1a;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .ac-item:hover, .ac-item.active { background: #f0f7ff; color: #0a66c2; }
+        .ac-item mark { background: none; color: #0a66c2; font-weight: 700; }
+        /* skill tag chips inside the skills input wrap */
+        .skill-tags-wrap {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 4px;
+            flex: 2;
+            padding: 6px 0;
+            min-width: 0;
+        }
+        .skill-tag-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: #e8f3ff;
+            color: #0a66c2;
+            border-radius: 20px;
+            padding: 3px 10px 3px 10px;
+            font-size: .78rem;
+            font-weight: 600;
+            white-space: nowrap;
+            cursor: default;
+        }
+        .skill-tag-chip .rm { cursor: pointer; font-size: .85rem; opacity: .7; margin-left: 2px; }
+        .skill-tag-chip .rm:hover { opacity: 1; }
+        #skill-type-input {
+            border: none; outline: none; font-family: inherit; font-size: .9rem;
+            color: #1a1a1a; background: transparent; min-width: 120px; padding: 4px 0;
+        }
         .sb-btn {
             background: #0a66c2;
             color: #fff;
@@ -552,23 +611,41 @@
         <h1>Find Jobs on LinkedIn &amp; Naukri — Matched to Your Resume</h1>
         <p>Upload your CV and we'll extract skills, fetch live jobs and score them with ATS</p>
         <div class="search-bar">
+            <!-- Designation -->
             <div class="sb-field">
                 <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 3l-4 4-4-4"/></svg>
-                <input type="text" name="designation" id="designation"
-                    value="{{ designation_filter if designation_filter else '' }}"
-                    placeholder="Job title / designation (e.g. Software Engineer)">
+                <div class="ac-wrap">
+                    <input type="text" name="designation" id="designation"
+                        value="{{ designation_filter if designation_filter else '' }}"
+                        placeholder="Job title / designation"
+                        autocomplete="off">
+                    <ul class="ac-list" id="ac-designation"></ul>
+                </div>
             </div>
-            <div class="sb-field" style="flex:2;">
-                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-                <input type="text" name="skills" id="skills"
-                    value="{{ ', '.join(skills) }}"
-                    placeholder="Skills — auto-filled from resume, or type here">
+            <!-- Skills tag input -->
+            <div class="sb-field" style="flex:2; align-items:flex-start; padding-top:0; padding-bottom:0;">
+                <svg width="16" height="16" style="margin-top:14px; flex-shrink:0;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+                <div class="ac-wrap skill-tags-wrap" id="skill-tags-wrap">
+                    <!-- chips injected by JS -->
+                    <input type="text" id="skill-type-input"
+                        placeholder="Skills — type to add"
+                        autocomplete="off">
+                    <ul class="ac-list" id="ac-skills"></ul>
+                </div>
+                <!-- hidden field that holds the real comma-separated value submitted -->
+                <input type="hidden" name="skills" id="skills-hidden"
+                    value="{{ ', '.join(skills) }}">
             </div>
+            <!-- Location -->
             <div class="sb-field">
                 <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
-                <input type="text" name="location"
-                    value="{{ location_filter if location_filter else '' }}"
-                    placeholder="City / Location">
+                <div class="ac-wrap">
+                    <input type="text" name="location" id="location"
+                        value="{{ location_filter if location_filter else '' }}"
+                        placeholder="City / Location"
+                        autocomplete="off">
+                    <ul class="ac-list" id="ac-location"></ul>
+                </div>
             </div>
             <button type="submit" class="sb-btn" id="fetch-btn">
                 <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
@@ -826,7 +903,7 @@ function toast(msg, type) {
     if (!input) return;
     var statusEl = document.getElementById('resume-status');
     var fetchBtn = document.getElementById('fetch-btn');
-    var skillsEl = document.getElementById('skills');
+    var skillsEl = document.getElementById('skills-hidden');
     var form     = input.closest('form');
 
     input.addEventListener('change', function(){
@@ -842,7 +919,12 @@ function toast(msg, type) {
             .then(function(r){ return r.json(); })
             .then(function(data){
                 if (data.status === 'success' && data.skills && data.skills.length) {
-                    skillsEl.value = data.skills_str;
+                    // Update hidden field and refresh skill chips
+                    if (window.setSkillsFromList) {
+                        window.setSkillsFromList(data.skills);
+                    } else {
+                        skillsEl.value = data.skills_str;
+                    }
                     if (document.getElementById('designation') && data.role)
                         document.getElementById('designation').value = data.role;
                     toast('Skills extracted — searching jobs now…', 'success');
@@ -942,6 +1024,181 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
         }
     });
 });
+
+// ══════════════════════════════════════════════════════════
+// AUTOCOMPLETE ENGINE
+// ══════════════════════════════════════════════════════════
+(function() {
+    var AC = { designations: [], skills: [], locations: [] };
+
+    // Load suggestions from API once
+    fetch('/api/autocomplete')
+        .then(function(r){ return r.json(); })
+        .then(function(d){ AC = d; initSkillChips(); })
+        .catch(function(){ initSkillChips(); });
+
+    // ── Generic single-value autocomplete ───────────────
+    function makeAC(inputId, listId, getItems) {
+        var input = document.getElementById(inputId);
+        var list  = document.getElementById(listId);
+        if (!input || !list) return;
+        var active = -1;
+
+        function show(items) {
+            var q = input.value.trim().toLowerCase();
+            list.innerHTML = '';
+            active = -1;
+            if (!q || !items.length) { list.classList.remove('open'); return; }
+            var filtered = items.filter(function(x){ return x.toLowerCase().includes(q); }).slice(0, 10);
+            if (!filtered.length) { list.classList.remove('open'); return; }
+            filtered.forEach(function(item, i) {
+                var li = document.createElement('li');
+                li.className = 'ac-item';
+                var idx = item.toLowerCase().indexOf(q);
+                li.innerHTML = item.slice(0,idx) + '<mark>' + item.slice(idx, idx+q.length) + '</mark>' + item.slice(idx+q.length);
+                li.addEventListener('mousedown', function(e){
+                    e.preventDefault();
+                    input.value = item;
+                    list.classList.remove('open');
+                });
+                list.appendChild(li);
+            });
+            list.classList.add('open');
+        }
+
+        input.addEventListener('input', function(){ show(getItems()); });
+        input.addEventListener('focus', function(){ if (input.value.trim()) show(getItems()); });
+        input.addEventListener('blur',  function(){ setTimeout(function(){ list.classList.remove('open'); }, 150); });
+        input.addEventListener('keydown', function(e) {
+            var items = list.querySelectorAll('.ac-item');
+            if (e.key === 'ArrowDown') { active = Math.min(active+1, items.length-1); }
+            else if (e.key === 'ArrowUp') { active = Math.max(active-1, 0); }
+            else if (e.key === 'Enter' && active >= 0) {
+                e.preventDefault();
+                input.value = items[active].textContent;
+                list.classList.remove('open'); active = -1;
+            } else if (e.key === 'Escape') { list.classList.remove('open'); }
+            items.forEach(function(it, i){ it.classList.toggle('active', i===active); });
+        });
+    }
+
+    makeAC('designation', 'ac-designation', function(){ return AC.designations || []; });
+    makeAC('location',    'ac-location',    function(){ return AC.locations    || []; });
+
+    // ── Skill tag-chip input ──────────────────────────────
+    function initSkillChips() {
+        var wrap    = document.getElementById('skill-tags-wrap');
+        var typeIn  = document.getElementById('skill-type-input');
+        var hidden  = document.getElementById('skills-hidden');
+        var acList  = document.getElementById('ac-skills');
+        if (!wrap || !typeIn || !hidden) return;
+
+        var chips = [];  // array of skill strings currently in the field
+
+        // Expose for resume upload handler
+        window.setSkillsFromList = function(arr) {
+            chips = arr.map(function(s){ return s.trim(); }).filter(Boolean);
+            hidden.value = chips.join(', ');
+            renderChips();
+        };
+
+        // Initialise from server-rendered hidden value
+        var initVal = hidden.value.trim();
+        if (initVal) {
+            chips = initVal.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+        }
+
+        function renderChips() {
+            // Remove all chip elements (keep typeIn and acList)
+            wrap.querySelectorAll('.skill-tag-chip').forEach(function(el){ el.remove(); });
+            chips.forEach(function(sk, i) {
+                var chip = document.createElement('span');
+                chip.className = 'skill-tag-chip';
+                chip.innerHTML = sk + ' <span class="rm" data-i="' + i + '">×</span>';
+                chip.querySelector('.rm').addEventListener('click', function(){
+                    chips.splice(parseInt(this.getAttribute('data-i')), 1);
+                    hidden.value = chips.join(', ');
+                    renderChips();
+                });
+                wrap.insertBefore(chip, typeIn);
+            });
+        }
+
+        function addSkill(sk) {
+            sk = sk.trim();
+            if (!sk) return;
+            if (!chips.map(function(c){ return c.toLowerCase(); }).includes(sk.toLowerCase())) {
+                chips.push(sk);
+                hidden.value = chips.join(', ');
+                renderChips();
+            }
+            typeIn.value = '';
+            acList.classList.remove('open');
+        }
+
+        function showSkillAC() {
+            var q = typeIn.value.trim().toLowerCase();
+            acList.innerHTML = '';
+            var allSkills = AC.skills || [];
+            // Show suggestions that match and aren't already added
+            var added = chips.map(function(c){ return c.toLowerCase(); });
+            var filtered;
+            if (q) {
+                filtered = allSkills.filter(function(s){
+                    return s.toLowerCase().includes(q) && !added.includes(s.toLowerCase());
+                }).slice(0, 12);
+            } else {
+                // Show popular suggestions when field is focused but empty
+                filtered = allSkills.filter(function(s){ return !added.includes(s.toLowerCase()); }).slice(0, 8);
+            }
+            if (!filtered.length) { acList.classList.remove('open'); return; }
+            filtered.forEach(function(item) {
+                var li = document.createElement('li');
+                li.className = 'ac-item';
+                if (q) {
+                    var idx = item.toLowerCase().indexOf(q);
+                    li.innerHTML = item.slice(0,idx) + '<mark>' + item.slice(idx,idx+q.length) + '</mark>' + item.slice(idx+q.length);
+                } else {
+                    li.textContent = item;
+                }
+                li.addEventListener('mousedown', function(e){ e.preventDefault(); addSkill(item); });
+                acList.appendChild(li);
+            });
+            acList.classList.add('open');
+        }
+
+        typeIn.addEventListener('input', showSkillAC);
+        typeIn.addEventListener('focus', showSkillAC);
+        typeIn.addEventListener('blur',  function(){ setTimeout(function(){ acList.classList.remove('open'); }, 150); });
+        typeIn.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ',') {
+                e.preventDefault();
+                var v = typeIn.value.replace(',','').trim();
+                if (v) addSkill(v); else return;
+            } else if (e.key === 'Backspace' && !typeIn.value && chips.length) {
+                chips.pop();
+                hidden.value = chips.join(', ');
+                renderChips();
+            } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                var items = acList.querySelectorAll('.ac-item');
+                var cur = acList.querySelector('.active');
+                var idx = Array.from(items).indexOf(cur);
+                if (e.key === 'ArrowDown') idx = Math.min(idx+1, items.length-1);
+                else idx = Math.max(idx-1, 0);
+                items.forEach(function(it,i){ it.classList.toggle('active', i===idx); });
+                e.preventDefault();
+            } else if (e.key === 'Enter') {
+                var active = acList.querySelector('.active');
+                if (active) { e.preventDefault(); addSkill(active.textContent); }
+            }
+        });
+
+        // Click on the wrap area focuses the input
+        wrap.addEventListener('click', function(){ typeIn.focus(); });
+
+        renderChips();
+    }
+})();
 </script>
 </body>
 </html>
