@@ -72,6 +72,21 @@ def _startup_background_work():
 
 threading.Thread(target=_startup_background_work, daemon=True).start()
 
+
+def _continuous_expired_checker():
+    """Background thread: every 10 minutes check 15 jobs for expiry."""
+    time.sleep(120)  # wait 2 min after startup before first run
+    while True:
+        try:
+            result = check_and_mark_expired_jobs(limit=15)
+            if result.get("expired"):
+                print(f"[lifecycle] Continuous checker: {result['expired']} jobs marked expired.")
+        except Exception as e:
+            print(f"[lifecycle] Continuous checker error: {e}")
+        time.sleep(600)  # run every 10 minutes
+
+threading.Thread(target=_continuous_expired_checker, daemon=True).start()
+
 # Default skills for the UI (empty — skills are extracted from uploaded resume)
 DEFAULT_SKILLS = []
 
@@ -237,6 +252,26 @@ def api_check_expired_jobs():
         print(f"[lifecycle] Manual check: {result}")
     threading.Thread(target=_run, daemon=True).start()
     return jsonify({"status": "started", "limit": limit})
+
+
+@app.route('/api/validate-job/<int:job_id>', methods=['GET'])
+def api_validate_job(job_id):
+    """
+    Instantly check whether a specific job is still accepting applications.
+    Returns {"active": true/false}. Marks the job expired in DB if closed.
+    """
+    from jd_scraper import scrape_jd_text
+    job = get_job_by_id(job_id)
+    if not job or not job.get("url"):
+        return jsonify({"active": False, "reason": "not_found"})
+    try:
+        jd_text, is_expired = scrape_jd_text(job["url"], job.get("source", ""))
+        if is_expired or (not jd_text and job.get("source", "").lower() == "linkedin"):
+            mark_job_status(job_id, "expired")
+            return jsonify({"active": False, "reason": "no_longer_accepting"})
+        return jsonify({"active": True})
+    except Exception as e:
+        return jsonify({"active": True, "reason": str(e)})  # fail open — don't block user
 
 
 @app.route('/applied-jobs')

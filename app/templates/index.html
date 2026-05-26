@@ -853,7 +853,10 @@
 
                 <div class="card-actions">
                     {% if job.url %}
-                    <a href="{{ job.url }}" target="_blank" class="btn btn-primary">Apply Now</a>
+                    <a href="#" class="btn btn-primary apply-now-btn"
+                       data-url="{{ job.url }}"
+                       data-job-id="{{ job.id }}"
+                       onclick="validateAndApply(event, this)">Apply Now</a>
                     {% endif %}
 
                     <button type="button"
@@ -1475,6 +1478,59 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
     initDesignationChips();
     initSkillChips();
     initLocationChips();
-})();</script>
+})();
+
+// ── Validate job before opening Apply link ─────────────────
+function validateAndApply(event, btn) {
+    event.preventDefault();
+    const url = btn.getAttribute('data-url');
+    const jobId = btn.getAttribute('data-job-id');
+    if (!jobId) { window.open(url, '_blank'); return; }
+
+    const origText = btn.textContent;
+    btn.textContent = '⏳ Checking…';
+    btn.disabled = true;
+
+    fetch(`/api/validate-job/${jobId}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.active === false) {
+                // Remove card from UI and show toast
+                const card = btn.closest('.job-card');
+                if (card) {
+                    card.style.transition = 'opacity .4s';
+                    card.style.opacity = '0';
+                    setTimeout(() => card.remove(), 400);
+                }
+                showExpiredToast();
+            } else {
+                window.open(url, '_blank');
+                btn.textContent = origText;
+                btn.disabled = false;
+            }
+        })
+        .catch(() => {
+            // On any network error, open anyway
+            window.open(url, '_blank');
+            btn.textContent = origText;
+            btn.disabled = false;
+        });
+}
+
+function showExpiredToast() {
+    let toast = document.getElementById('expired-toast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'expired-toast';
+        toast.style.cssText = `position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+            background:#dc2626;color:#fff;padding:12px 24px;border-radius:10px;font-weight:600;
+            font-size:.9rem;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.3);`;
+        toast.textContent = '⚠️ This job is no longer accepting applications and has been removed.';
+        document.body.appendChild(toast);
+    }
+    toast.style.display = 'block';
+    setTimeout(() => { toast.style.display = 'none'; }, 4000);
+}
+</script>
 </body>
 </html>
