@@ -2,8 +2,14 @@ __pycache__/
 *.pyc
 .venv/
 playwright_profile/
-jobs.db
-.env
 playwright_profile_debug/
+jobs.db
 jobs.db-shm
 jobs.db-wal
+.env
+
+# Generated CV/resume files — never commit user data
+*.pdf
+sample_cv.pdf
+smart_cv_*.pdf
+tailored_cv_*.pdf
