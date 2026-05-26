@@ -5,3 +5,5 @@ playwright_profile/
 jobs.db
 .env
 playwright_profile_debug/
+jobs.db-shm
+jobs.db-wal

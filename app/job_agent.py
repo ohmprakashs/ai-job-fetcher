@@ -1,6 +1,6 @@
 from job_fetcher import fetch_jobs, _job_matches_experience, _job_matches_posted_within, _matches_requested_skills
 from collections import defaultdict
-from job_db import init_db, insert_jobs, get_jobs_from_db
+from job_db import init_db, insert_jobs, get_jobs_from_db, update_job_description
 
 class JobAIAgent:
     def __init__(self, skills, location="", experience_years=None, posted_within_days=None, designation=""):
@@ -78,15 +78,59 @@ class JobAIAgent:
                 # Naukri provides explicit skill tags; LinkedIn does not.
                 job_required_skills = [s for s in job_skills_lower if len(s) > 1]
 
-                # Build the broadest possible search text from all available fields:
-                #   title  +  skill tags  +  description / snippet  +  company name
-                # This helps LinkedIn jobs (which lack tags) still get a fair score.
+                # ── Fetch real JD text for LinkedIn jobs ──────────────────
+                # LinkedIn card pages don't include skill tags. When a job
+                # has no cached description, fetch it now (fast HTTP GET) and
+                # cache it so we only do this once per job.
+                # Guard: use `or ""` to safely convert DB NULLs (Python None) to ""
+                job_description = str(job.get("description") or "").strip()
+                job_snippet     = str(job.get("snippet")     or "").strip()
+                job_source      = str(job.get("source",   "") or "").lower()
+
+                # Only lazily fetch JDs for jobs whose title fully matches at least
+                # ONE of the user's designations. With multi-designation chip input
+                # (e.g. "devops engineer, sre") we check each designation independently
+                # so a "DevOps Engineer" title correctly triggers a JD fetch.
+                desig_list = [d.strip() for d in self.designation.split(",") if d.strip()]
+                title_has_designation = bool(desig_list) and any(
+                    all(
+                        p in str(job.get("title", "")).lower()
+                        for p in d.split()
+                        if len(p) > 2
+                    )
+                    for d in desig_list
+                )
+                if (not job_description and job_source == "linkedin"
+                        and job.get("url") and title_has_designation):
+                    try:
+                        from jd_scraper import scrape_jd_text
+                        fetched = scrape_jd_text(job["url"], "linkedin") or ""
+                        if fetched:
+                            job_description = fetched
+                            if job.get("id"):
+                                update_job_description(job["id"], fetched)
+                    except Exception:
+                        pass
+
+                # ── Detect "mirror skills": LinkedIn stores our own search
+                # keywords that happened to appear in the card title.
+                # These are NOT real JD skill requirements.
+                # NOTE: only apply to LinkedIn — Naukri provides real skill tags.
+                skills_are_mirrors = (
+                    job_source == "linkedin"
+                    and 0 < len(job_required_skills) <= 2   # small set = likely just title keywords
+                    and all(s in self.skills for s in job_required_skills)
+                    and not job_description
+                )
+
+                # Build the broadest possible search text
+                # Use `or ""` on every field to guard against DB NULLs
                 search_text = " ".join(filter(None, [
                     job_title_lower,
-                    " ".join(job_required_skills),
-                    str(job.get("description", "")).lower(),
-                    str(job.get("snippet", "")).lower(),
-                    str(job.get("company", "")).lower(),
+                    "" if skills_are_mirrors else " ".join(job_required_skills),
+                    job_description.lower(),
+                    job_snippet.lower(),
+                    str(job.get("company") or "").lower(),
                 ]))
 
                 def _skill_in_text(skill, text):
@@ -95,45 +139,63 @@ class JobAIAgent:
                     ))
 
                 for user_skill in self.skills:
-                    # Check explicit tag list first (exact / substring match)
-                    tag_match = any(
-                        user_skill == req or (len(user_skill) > 2 and user_skill in req)
-                        for req in job_required_skills
+                    tag_match = (
+                        not skills_are_mirrors and
+                        any(user_skill == req or (len(user_skill) > 2 and user_skill in req)
+                            for req in job_required_skills)
                     )
-                    # Fall back to searching all available text
                     if tag_match or _skill_in_text(user_skill, search_text):
                         matched_skills.append(user_skill)
                     else:
                         missing_skills.append(user_skill)
 
-                if self.skills:
-                    # Score: 25 pts per matched skill, capped at 75
-                    score = min(len(matched_skills) * 25, 75)
-                else:
-                    score = 0
-                
+                # ── Fallback: job returned by platform but has no real skill data ──
+                # When we have no JD text AND title matches designation,
+                # assume all user skills are potentially relevant (the platform
+                # itself returned this job for our query). Show it; user can verify.
+                no_real_data = (
+                    (len(job_required_skills) == 0 or skills_are_mirrors)
+                    and not job_description
+                    and not job_snippet           # already str(…or""), safe to bool
+                )
+                title_matches_desig = bool(self.designation) and any(
+                    any(p in job_title_lower for p in d.split() if len(p) > 2)
+                    for d in [x.strip() for x in self.designation.split(",") if x.strip()]
+                )
+                if no_real_data and title_matches_desig:
+                    matched_skills = list(self.skills)
+                    missing_skills = []
+
+                # Score: proportional to % of skills matched, scaled to 75 pts
+                match_ratio = len(matched_skills) / len(self.skills) if self.skills else 0
+                score = int(match_ratio * 75)
+
             desig_score = 0
             if self.designation:
-                desig_parts = self.designation.replace(",", " ").split()
-                # Strict exact full match
-                if all(p in job_title_lower for p in desig_parts):
-                    desig_score = 25
-                # Meaningless partial matches should not grant points to unrelated JDs
-                elif len(desig_parts) > 1 and sum(1 for p in desig_parts if p in job_title_lower) >= len(desig_parts) / 2:
-                    desig_score = 10
-                
+                # Score against each individual designation; take the best match
+                for d in [x.strip() for x in self.designation.split(",") if x.strip()]:
+                    d_parts = d.split()
+                    if all(p in job_title_lower for p in d_parts):
+                        desig_score = 25
+                        break
+                    elif len(d_parts) > 1 and sum(1 for p in d_parts if p in job_title_lower) >= len(d_parts) / 2:
+                        desig_score = max(desig_score, 10)
+
             score += desig_score
-            
+
             job['match_score'] = min(score, 100)
             job['matched_skills'] = matched_skills
             job['missing_skills'] = missing_skills
-                    
+
             if not self.skills and not self.designation:
-                # No filters provided, show everything with 100% score
                 job['match_score'] = 100
                 filtered_jobs.append(job)
-            elif job["match_score"] >= 50: 
-                # Either skills or designation provided, show jobs with >= 50 match
+            elif not self.skills:
+                # No skills provided — show all jobs that passed location/experience filter.
+                # Score is designation-based only (0–25); include everything.
+                filtered_jobs.append(job)
+            elif job["match_score"] >= 35:
+                # Show jobs with >= 35 match — surfaces adjacent roles (e.g. SRE vs DevOps)
                 filtered_jobs.append(job)
             
         # Sort jobs by match_score descending
