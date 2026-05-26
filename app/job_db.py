@@ -504,7 +504,7 @@ def bulk_mark_expired_from_text() -> int:
         conn.close()
 
 
-
+def insert_jobs(jobs):
     for job in jobs:
         insert_or_update_job(job)
 
