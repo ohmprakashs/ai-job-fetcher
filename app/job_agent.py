@@ -26,12 +26,6 @@ class JobAIAgent:
         # 2. Store/update these live jobs in the DB to refresh fetched_at timestamp
         insert_jobs(fetched_live_jobs)
 
-        # 2b. Immediately verify new LinkedIn jobs for expiry in background
-        #     (runs concurrently so it doesn't slow down the UI response)
-        threading.Thread(
-            target=verify_new_jobs_for_expiry, args=(40,), daemon=True
-        ).start()
-
         # 3. Pull ALL known jobs from the DB so we have a full "cached" list
         all_cached_jobs = get_jobs_from_db()
         
