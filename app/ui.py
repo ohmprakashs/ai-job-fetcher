@@ -74,11 +74,11 @@ threading.Thread(target=_startup_background_work, daemon=True).start()
 
 
 def _continuous_expired_checker():
-    """Background thread: every 10 minutes check 15 jobs for expiry."""
-    time.sleep(120)  # wait 2 min after startup before first run
+    """Background thread: every 10 minutes check 25 jobs for expiry, prioritising recent ones."""
+    time.sleep(60)  # wait 1 min after startup before first run
     while True:
         try:
-            result = check_and_mark_expired_jobs(limit=15)
+            result = check_and_mark_expired_jobs(limit=25)
             if result.get("expired"):
                 print(f"[lifecycle] Continuous checker: {result['expired']} jobs marked expired.")
         except Exception as e:

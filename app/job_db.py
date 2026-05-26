@@ -385,7 +385,7 @@ def get_stale_jobs_to_check(limit: int = 20) -> list:
     """
     Return jobs that should be re-validated:
     - active, have a URL
-    - not checked in last 48h (or never checked)
+    - not checked in last 6h (recently posted) or 24h (older jobs)
     - not applied (no point checking those)
     """
     conn = get_conn()
@@ -397,9 +397,20 @@ def get_stale_jobs_to_check(limit: int = 20) -> list:
             AND is_applied = 0
             AND (
                 last_checked_at IS NULL
-                OR last_checked_at < datetime('now', '-48 hours')
+                OR (
+                    -- recently posted jobs (<=3 days): recheck every 6h
+                    CAST(COALESCE(posted_days_ago, 999) AS INTEGER) <= 3
+                    AND last_checked_at < datetime('now', '-6 hours')
+                )
+                OR (
+                    -- older jobs: recheck every 24h
+                    CAST(COALESCE(posted_days_ago, 999) AS INTEGER) > 3
+                    AND last_checked_at < datetime('now', '-24 hours')
+                )
             )
-            ORDER BY fetched_at ASC
+            ORDER BY
+                CAST(COALESCE(posted_days_ago, 999) AS INTEGER) ASC,
+                last_checked_at ASC NULLS FIRST
             LIMIT ?
         """, (limit,)).fetchall()
         return [{"id": r[0], "url": r[1], "source": r[2],
