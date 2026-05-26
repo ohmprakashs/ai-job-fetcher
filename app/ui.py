@@ -6,7 +6,8 @@ from job_db import (init_db, mark_job_applied, get_job_applications_status, get_
                     backfill_skills_from_descriptions, get_jobs_needing_jd_fetch,
                     batch_update_job_skills, _extract_skills_from_text, update_job_description,
                     check_and_mark_expired_jobs, get_new_jobs_count, update_application_status,
-                    mark_job_status, get_lifecycle_stats, bulk_mark_expired_from_text)
+                    mark_job_status, get_lifecycle_stats, bulk_mark_expired_from_text,
+                    verify_new_jobs_for_expiry)
 import os
 import threading
 import time
@@ -62,7 +63,12 @@ def _startup_background_work():
         if cleaned:
             print(f"[lifecycle] Bulk-marked {cleaned} existing jobs as expired (text signals).")
 
-        # Step 4: check for expired/filled jobs via HTTP (throttled, 20 per startup)
+        # Step 4: verify brand-new LinkedIn jobs (never checked) for expiry
+        new_expired = verify_new_jobs_for_expiry(limit=30)
+        if new_expired:
+            print(f"[lifecycle] Removed {new_expired} newly-fetched jobs already closed on LinkedIn.")
+
+        # Step 5: check for expired/filled jobs via HTTP (throttled, 20 per startup)
         result = check_and_mark_expired_jobs(limit=20)
         if result["checked"]:
             print(f"[lifecycle] Checked {result['checked']} jobs: "

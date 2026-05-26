@@ -1,6 +1,7 @@
 from job_fetcher import fetch_jobs, _job_matches_experience, _job_matches_posted_within, _matches_requested_skills
 from collections import defaultdict
-from job_db import init_db, insert_jobs, get_jobs_from_db, update_job_description
+from job_db import init_db, insert_jobs, get_jobs_from_db, update_job_description, verify_new_jobs_for_expiry
+import threading
 
 class JobAIAgent:
     def __init__(self, skills, location="", experience_years=None, posted_within_days=None, designation=""):
@@ -24,7 +25,13 @@ class JobAIAgent:
         
         # 2. Store/update these live jobs in the DB to refresh fetched_at timestamp
         insert_jobs(fetched_live_jobs)
-        
+
+        # 2b. Immediately verify new LinkedIn jobs for expiry in background
+        #     (runs concurrently so it doesn't slow down the UI response)
+        threading.Thread(
+            target=verify_new_jobs_for_expiry, args=(40,), daemon=True
+        ).start()
+
         # 3. Pull ALL known jobs from the DB so we have a full "cached" list
         all_cached_jobs = get_jobs_from_db()
         

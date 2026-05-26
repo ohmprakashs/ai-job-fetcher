@@ -87,7 +87,9 @@ def insert_or_update_job(job):
                 posted_date=excluded.posted_date,
                 description=COALESCE(NULLIF(excluded.description,''), jobs.description),
                 snippet=COALESCE(NULLIF(excluded.snippet,''), jobs.snippet),
-                status=CASE WHEN jobs.status='expired' THEN 'active' ELSE jobs.status END
+                status=CASE WHEN jobs.status IN ('expired','filled','closed')
+                            THEN jobs.status
+                            ELSE jobs.status END
         ''', (
             job.get('title', ''),
             job.get('company', ''),
@@ -518,6 +520,59 @@ def bulk_mark_expired_from_text() -> int:
 def insert_jobs(jobs):
     for job in jobs:
         insert_or_update_job(job)
+
+
+def verify_new_jobs_for_expiry(limit: int = 30) -> int:
+    """
+    Check jobs that have never been verified (last_checked_at IS NULL)
+    and mark them expired if their detail page says 'no longer accepting'.
+    Called in background after a fresh fetch. Returns count marked expired.
+    """
+    import time
+    try:
+        from jd_scraper import scrape_jd_text
+    except ImportError:
+        return 0
+
+    conn = get_conn()
+    try:
+        rows = conn.execute("""
+            SELECT id, url, source, title FROM jobs
+            WHERE status = 'active'
+            AND last_checked_at IS NULL
+            AND url IS NOT NULL AND url != ''
+            AND source = 'LinkedIn'
+            ORDER BY fetched_at DESC
+            LIMIT ?
+        """, (limit,)).fetchall()
+    finally:
+        conn.close()
+
+    expired_count = 0
+    now = datetime.utcnow().isoformat()
+    for row in rows:
+        job_id, url, source, title = row
+        try:
+            time.sleep(0.8)
+            _, is_expired = scrape_jd_text(url, source)
+            conn2 = get_conn()
+            if is_expired:
+                conn2.execute(
+                    "UPDATE jobs SET status='expired', last_checked_at=? WHERE id=?",
+                    (now, job_id)
+                )
+                expired_count += 1
+                print(f"[verify] Marked expired on insert: {title}")
+            else:
+                conn2.execute(
+                    "UPDATE jobs SET last_checked_at=? WHERE id=?",
+                    (now, job_id)
+                )
+            conn2.commit()
+            conn2.close()
+        except Exception:
+            pass
+    return expired_count
 
 def get_jobs_from_db():
     conn = get_conn()

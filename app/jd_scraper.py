@@ -29,6 +29,26 @@ def _is_expired_text(text: str) -> bool:
     return any(sig in t for sig in _EXPIRED_SIGNALS)
 
 
+def _has_apply_button(soup) -> bool:
+    """
+    Returns True if the page contains an Apply / Easy Apply / Apply on Company Site button.
+    This is the most reliable signal that a job is still accepting applications.
+    """
+    # Check for button with 'apply' in class name (LinkedIn guest API)
+    apply_btn = soup.find(
+        ["button", "a"],
+        class_=lambda c: c and any("apply" in cls.lower() for cls in (c if isinstance(c, list) else [c]))
+    )
+    if apply_btn:
+        return True
+    # Check text-based apply signals
+    page_lower = soup.get_text(" ", strip=True).lower()
+    return any(sig in page_lower for sig in [
+        "easy apply", "apply now", "apply on company site", "apply on companysitebutton",
+        "sign in to apply", "continue to apply"
+    ])
+
+
 def _extract_linkedin_job_id(url: str) -> str:
     """Extract the numeric job ID from any LinkedIn job URL."""
     m = _re.search(r'[-/](\d{7,})(?:[/?]|$)', url or "")
@@ -40,7 +60,7 @@ def scrape_jd_text(url, source):
     Scrape the JD text for a job URL.
     Returns (text, is_expired) tuple.
     - text: the JD body text (empty string if unavailable)
-    - is_expired: True if the job page clearly says it's closed
+    - is_expired: True if the job has no apply button OR shows closed signals
     """
     if not url:
         return "", False
@@ -49,7 +69,6 @@ def scrape_jd_text(url, source):
     source = source.lower()
     try:
         if 'linkedin' in source:
-            # 1) Try the unauthenticated guest API
             job_id = _extract_linkedin_job_id(url)
             if job_id:
                 guest_url = f"https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{job_id}"
@@ -57,9 +76,15 @@ def scrape_jd_text(url, source):
                     resp = requests.get(guest_url, headers=_LI_HEADERS, timeout=10)
                     if resp.status_code == 200:
                         soup = BeautifulSoup(resp.text, "html.parser")
-                        page_text = soup.get_text(" ", strip=True)
-                        if _is_expired_text(page_text):
-                            return "", True  # expired — no need to parse further
+
+                        # PRIMARY CHECK: does an Apply/Easy Apply button exist?
+                        if not _has_apply_button(soup):
+                            return "", True  # no apply button = not accepting applications
+
+                        # SECONDARY CHECK: explicit expired text
+                        if _is_expired_text(soup.get_text(" ", strip=True)):
+                            return "", True
+
                         desc = (
                             soup.find("div", class_="show-more-less-html__markup")
                             or soup.find("section", class_="description")
@@ -72,14 +97,13 @@ def scrape_jd_text(url, source):
                 except Exception:
                     pass
 
-            # 2) Fallback: direct job page
+            # Fallback: direct job page
             if not text:
                 try:
                     resp = requests.get(url, headers=_LI_HEADERS, timeout=10)
                     if resp.status_code == 200:
                         soup = BeautifulSoup(resp.text, "html.parser")
-                        page_text = soup.get_text(" ", strip=True)
-                        if _is_expired_text(page_text):
+                        if not _has_apply_button(soup) or _is_expired_text(soup.get_text(" ", strip=True)):
                             return "", True
                         desc = (
                             soup.find("div", class_="show-more-less-html__markup")
@@ -113,3 +137,4 @@ def scrape_jd_text(url, source):
     except Exception as e:
         print(f"Failed to scrape JD from {url}: {e}")
     return text, is_expired
+
