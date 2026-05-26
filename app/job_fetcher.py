@@ -331,6 +331,17 @@ def fetch_linkedin_jobs(skills, location="", designation=""):
                         continue
 
                     card_text = info.get_text(" ", strip=True)
+
+                    # Skip jobs that are no longer accepting applications
+                    card_lower = card_text.lower()
+                    if any(sig in card_lower for sig in [
+                        "no longer accepting applications",
+                        "no longer available",
+                        "position has been filled",
+                        "applications are closed",
+                    ]):
+                        continue
+
                     exp_range = _extract_experience_years(card_text)
 
                     posted_days_ago = None

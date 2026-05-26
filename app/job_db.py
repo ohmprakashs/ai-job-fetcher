@@ -428,12 +428,13 @@ def check_and_mark_expired_jobs(limit: int = 20) -> dict:
         for job in jobs:
             try:
                 time.sleep(1.5)
-                jd_text = scrape_jd_text(job["url"], job["source"].lower()) or ""
+                jd_text, is_expired = scrape_jd_text(job["url"], job["source"].lower())
+                jd_text = jd_text or ""
                 jd_lower = jd_text.lower()
 
                 # Determine new status
-                if not jd_text or len(jd_text) < 30:
-                    new_status = "expired"   # page returned nothing — likely removed
+                if is_expired or not jd_text or len(jd_text) < 30:
+                    new_status = "expired"
                 elif any(sig in jd_lower for sig in _EXPIRED_SIGNALS):
                     new_status = "expired"
                 else:
@@ -481,7 +482,29 @@ def get_lifecycle_stats() -> dict:
     finally:
         conn.close()
 
-def insert_jobs(jobs):
+def bulk_mark_expired_from_text() -> int:
+    """
+    Scan existing DB jobs and mark as 'expired' if their snippet or description
+    contains known expired signals (e.g. 'no longer accepting applications').
+    Returns count of jobs marked expired.
+    """
+    conn = get_conn()
+    try:
+        signals_sql = " OR ".join(
+            [f"LOWER(snippet) LIKE '%{s}%' OR LOWER(description) LIKE '%{s}%'" for s in _EXPIRED_SIGNALS]
+        )
+        result = conn.execute(f"""
+            UPDATE jobs SET status='expired'
+            WHERE status NOT IN ('expired','filled','closed')
+            AND ({signals_sql})
+        """)
+        conn.commit()
+        return result.rowcount
+    finally:
+        conn.close()
+
+
+
     for job in jobs:
         insert_or_update_job(job)
 
@@ -490,14 +513,15 @@ def get_jobs_from_db():
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
     try:
-        # Order by fetched_at DESC so newest seen jobs are at the top
-        c.execute("SELECT * FROM jobs ORDER BY fetched_at DESC")
+        # Exclude expired/filled/closed jobs from normal listings
+        c.execute(
+            "SELECT * FROM jobs WHERE status NOT IN ('expired','filled','closed') ORDER BY fetched_at DESC"
+        )
         rows = c.fetchall()
         jobs = []
         for r in rows:
             job = dict(r)
             job['skills'] = job['skills'].split(',') if job['skills'] else []
-            # Make sure we convert is_applied boolean
             job['is_applied'] = bool(job.get('is_applied', 0))
             jobs.append(job)
         return jobs

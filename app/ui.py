@@ -6,7 +6,7 @@ from job_db import (init_db, mark_job_applied, get_job_applications_status, get_
                     backfill_skills_from_descriptions, get_jobs_needing_jd_fetch,
                     batch_update_job_skills, _extract_skills_from_text, update_job_description,
                     check_and_mark_expired_jobs, get_new_jobs_count, update_application_status,
-                    mark_job_status, get_lifecycle_stats)
+                    mark_job_status, get_lifecycle_stats, bulk_mark_expired_from_text)
 import os
 import threading
 import time
@@ -38,7 +38,12 @@ def _startup_background_work():
         for job in jobs_to_fetch:
             try:
                 time.sleep(1.2)
-                jd_text = scrape_jd_text(job["url"], job["source"].lower()) or ""
+                jd_text, _expired = scrape_jd_text(job["url"], job["source"].lower())
+                if _expired:
+                    from job_db import mark_job_status
+                    mark_job_status(job["id"], "expired")
+                    continue
+                jd_text = jd_text or ""
                 if jd_text and len(jd_text) > 100:
                     extracted = _extract_skills_from_text(jd_text)
                     skills_str = ",".join(sorted(set(extracted))) if extracted else ""
@@ -52,7 +57,12 @@ def _startup_background_work():
             if n2:
                 print(f"[startup] Post-fetch backfill updated {n2} more jobs.")
 
-        # Step 3: check for expired/filled jobs (throttled, 20 per startup)
+        # Step 3: bulk mark existing DB jobs expired based on text signals (fast, no HTTP)
+        cleaned = bulk_mark_expired_from_text()
+        if cleaned:
+            print(f"[lifecycle] Bulk-marked {cleaned} existing jobs as expired (text signals).")
+
+        # Step 4: check for expired/filled jobs via HTTP (throttled, 20 per startup)
         result = check_and_mark_expired_jobs(limit=20)
         if result["checked"]:
             print(f"[lifecycle] Checked {result['checked']} jobs: "
@@ -476,7 +486,10 @@ def ai_match(job_id):
         return jsonify({"status": "error", "message": "Job or URL not found."}), 404
         
     resume_path = os.path.join(_BASE_DIR, "..", "sample_cv.pdf")
-    jd_text = scrape_jd_text(job.get("url", ""), job.get("source", ""))
+    jd_text, is_expired = scrape_jd_text(job.get("url", ""), job.get("source", ""))
+    if is_expired:
+        mark_job_status(job_id, "expired")
+        return jsonify({"status": "error", "message": "This job is no longer accepting applications."}), 410
     report = generate_ai_match_report(resume_path, job, jd_text)
     return jsonify({"status": "success", "report": report})
 
@@ -489,7 +502,10 @@ def ats_scorecard(job_id):
         return jsonify({"status": "error", "message": "Job not found."}), 404
 
     resume_path = os.path.join(_BASE_DIR, "..", "sample_cv.pdf")
-    jd_text = scrape_jd_text(job.get("url", ""), job.get("source", ""))
+    jd_text, is_expired = scrape_jd_text(job.get("url", ""), job.get("source", ""))
+    if is_expired:
+        mark_job_status(job_id, "expired")
+        return jsonify({"status": "error", "message": "This job is no longer accepting applications."}), 410
     scorecard = generate_ats_scorecard(resume_path, job, jd_text)
     if "error" in scorecard:
         return jsonify({"status": "error", "message": scorecard["error"]}), 400
@@ -511,7 +527,10 @@ def smart_tailor_cv(job_id):
         return "No resume uploaded. Please upload your CV first.", 400
 
     output_pdf_path = os.path.join(_BASE_DIR, "..", f"smart_cv_{job_id}.pdf")
-    jd_text = scrape_jd_text(job.get("url", ""), job.get("source", ""))
+    jd_text, is_expired = scrape_jd_text(job.get("url", ""), job.get("source", ""))
+    if is_expired:
+        mark_job_status(job_id, "expired")
+        return "This job is no longer accepting applications.", 410
 
     try:
         result = tailor_cv_smart(base_pdf_path, job, output_pdf_path, jd_text)

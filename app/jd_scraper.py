@@ -12,26 +12,44 @@ _LI_HEADERS = {
     "Accept-Language": "en-US,en;q=0.9",
 }
 
+# Phrases LinkedIn shows when a job is closed
+_EXPIRED_SIGNALS = [
+    "no longer accepting applications",
+    "no longer available",
+    "this job is no longer",
+    "position has been filled",
+    "job has expired",
+    "applications are closed",
+    "not accepting applications",
+    "this listing has been removed",
+]
+
+def _is_expired_text(text: str) -> bool:
+    t = text.lower()
+    return any(sig in t for sig in _EXPIRED_SIGNALS)
+
 
 def _extract_linkedin_job_id(url: str) -> str:
-    """Extract the numeric job ID from any LinkedIn job URL.
-    
-    Handles both:
-    - /jobs/view/4409787311/
-    - /jobs/view/site-reliability-engineer-at-company-4409787311/
-    """
-    # The job ID is a long numeric sequence (7+ digits) at the end of the URL path
+    """Extract the numeric job ID from any LinkedIn job URL."""
     m = _re.search(r'[-/](\d{7,})(?:[/?]|$)', url or "")
     return m.group(1) if m else ""
 
 
 def scrape_jd_text(url, source):
-    if not url: return ""
+    """
+    Scrape the JD text for a job URL.
+    Returns (text, is_expired) tuple.
+    - text: the JD body text (empty string if unavailable)
+    - is_expired: True if the job page clearly says it's closed
+    """
+    if not url:
+        return "", False
     text = ""
+    is_expired = False
     source = source.lower()
     try:
         if 'linkedin' in source:
-            # 1) Try the unauthenticated guest API — returns full JD HTML without login
+            # 1) Try the unauthenticated guest API
             job_id = _extract_linkedin_job_id(url)
             if job_id:
                 guest_url = f"https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{job_id}"
@@ -39,6 +57,9 @@ def scrape_jd_text(url, source):
                     resp = requests.get(guest_url, headers=_LI_HEADERS, timeout=10)
                     if resp.status_code == 200:
                         soup = BeautifulSoup(resp.text, "html.parser")
+                        page_text = soup.get_text(" ", strip=True)
+                        if _is_expired_text(page_text):
+                            return "", True  # expired — no need to parse further
                         desc = (
                             soup.find("div", class_="show-more-less-html__markup")
                             or soup.find("section", class_="description")
@@ -46,15 +67,20 @@ def scrape_jd_text(url, source):
                         )
                         if desc:
                             text = desc.get_text(" ", strip=True)
+                    elif resp.status_code == 404:
+                        return "", True  # job removed
                 except Exception:
                     pass
 
-            # 2) Fallback: direct job page (sometimes works for public/cached pages)
+            # 2) Fallback: direct job page
             if not text:
                 try:
                     resp = requests.get(url, headers=_LI_HEADERS, timeout=10)
                     if resp.status_code == 200:
                         soup = BeautifulSoup(resp.text, "html.parser")
+                        page_text = soup.get_text(" ", strip=True)
+                        if _is_expired_text(page_text):
+                            return "", True
                         desc = (
                             soup.find("div", class_="show-more-less-html__markup")
                             or soup.find("div", class_="description__text")
@@ -62,11 +88,12 @@ def scrape_jd_text(url, source):
                         )
                         if desc:
                             text = desc.get_text(" ", strip=True)
+                    elif resp.status_code == 404:
+                        return "", True
                 except Exception:
                     pass
-                
+
         elif 'naukri' in source:
-            # Needs playwright because of React/SPA
             with sync_playwright() as p:
                 browser = p.chromium.launch(
                     executable_path="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -74,16 +101,15 @@ def scrape_jd_text(url, source):
                 )
                 page = browser.new_page(user_agent="Mozilla/5.0")
                 page.goto(url, timeout=30000)
-                # Various Naukri description classes
-                selectors = [".job-desc", ".styles_JDC__...", ".styles_job-desc-container__..."]
                 try:
                     page.wait_for_selector(".job-desc", timeout=5000)
                     text = page.locator(".job-desc").inner_text()
-                except:
-                    # fallback get body
+                except Exception:
                     text = page.locator("body").inner_text()
+                if _is_expired_text(text):
+                    is_expired = True
+                    text = ""
                 browser.close()
     except Exception as e:
         print(f"Failed to scrape JD from {url}: {e}")
-        pass
-    return text
+    return text, is_expired

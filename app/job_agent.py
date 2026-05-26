@@ -31,6 +31,10 @@ class JobAIAgent:
         # 4. Filter the cached jobs according to the current UI filters
         filtered_jobs = []
         for job in all_cached_jobs:
+            # Skip jobs marked as expired/filled/closed
+            if job.get("status") in ("expired", "filled", "closed"):
+                continue
+
             # Check location
             if self.location:
                 job_loc = str(job.get("location", "")).lower()
@@ -104,7 +108,12 @@ class JobAIAgent:
                         and job.get("url") and title_has_designation):
                     try:
                         from jd_scraper import scrape_jd_text
-                        fetched = scrape_jd_text(job["url"], "linkedin") or ""
+                        fetched, jd_expired = scrape_jd_text(job["url"], "linkedin")
+                        if jd_expired:
+                            if job.get("id"):
+                                from job_db import mark_job_status
+                                mark_job_status(job["id"], "expired")
+                            continue  # skip expired job from results
                         if fetched:
                             job_description = fetched
                             if job.get("id"):
