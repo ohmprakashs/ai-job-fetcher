@@ -144,9 +144,8 @@ def index():
     resume_path = os.path.join(_BASE_DIR, "..", "sample_cv.pdf")
     has_resume = os.path.exists(resume_path)
     applied_count = get_applied_count()
-    new_jobs_count = get_new_jobs_count(hours=24)
-    from datetime import timedelta
-    now_date = (datetime.utcnow() - timedelta(hours=24)).strftime('%Y-%m-%d')
+    new_jobs_count = get_new_jobs_count()
+    now_date = datetime.utcnow().strftime('%Y-%m-%d')
 
     return render_template(
         'index.html',
@@ -215,7 +214,7 @@ def api_lifecycle_stats():
     """Return job lifecycle + application outcome stats as JSON."""
     init_db()
     stats = get_lifecycle_stats()
-    stats['new_24h'] = get_new_jobs_count(hours=24)
+    stats['new_24h'] = get_new_jobs_count()
     return jsonify(stats)
 
 
