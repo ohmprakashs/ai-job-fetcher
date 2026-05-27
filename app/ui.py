@@ -743,10 +743,30 @@ def autocomplete():
     # ── Augment with DB data ─────────────────────────────────────────────────
     try:
         conn = sqlite3.connect(DB_PATH)
-        # Pull unique locations from DB jobs
-        db_locs = [r[0].strip() for r in conn.execute(
-            "SELECT DISTINCT location FROM jobs WHERE location IS NOT NULL AND location != '' AND location != 'N/A' ORDER BY location"
-        ).fetchall() if r[0] and len(r[0]) < 60]
+        # Pull locations from active jobs ordered by frequency (most jobs = most relevant)
+        db_loc_rows = conn.execute(
+            """SELECT location, COUNT(*) as cnt
+               FROM jobs
+               WHERE status NOT IN ('expired','filled','closed')
+                 AND location IS NOT NULL AND location != '' AND location != 'N/A'
+               GROUP BY location
+               ORDER BY cnt DESC"""
+        ).fetchall()
+
+        # Expand multi-city strings (e.g. "Pune, Bengaluru, Delhi / NCR") into individual cities
+        db_loc_freq = {}   # city -> total job count
+        for raw_loc, cnt in db_loc_rows:
+            raw_loc = raw_loc.strip()
+            # Split on comma, clean "Hybrid - " prefix, strip whitespace
+            parts = [p.replace("Hybrid - ", "").replace("Hybrid-", "").strip() for p in raw_loc.split(",")]
+            for part in parts:
+                part = part.strip()
+                if part and len(part) < 60 and len(part) > 2:
+                    db_loc_freq[part] = db_loc_freq.get(part, 0) + cnt
+
+        # Sort by frequency descending
+        db_locs_sorted = [loc for loc, _ in sorted(db_loc_freq.items(), key=lambda x: -x[1])]
+
         # Pull unique skills from DB job tags (comma-separated)
         db_skills_raw = conn.execute(
             "SELECT skills FROM jobs WHERE skills IS NOT NULL AND skills != ''"
@@ -759,12 +779,16 @@ def autocomplete():
                     db_skills.add(sk.title())
         conn.close()
     except Exception:
-        db_locs, db_skills = [], set()
+        db_locs_sorted, db_skills = [], set()
 
-    # Merge and deduplicate (case-insensitive)
-    locs_seen = {l.lower() for l in LOCATIONS}
-    merged_locs = list(LOCATIONS)
-    for l in db_locs:
+    # Merge: DB frequency-sorted locations FIRST, then static fallbacks
+    locs_seen = set()
+    merged_locs = []
+    for l in db_locs_sorted:
+        if l.lower() not in locs_seen:
+            merged_locs.append(l)
+            locs_seen.add(l.lower())
+    for l in LOCATIONS:
         if l.lower() not in locs_seen:
             merged_locs.append(l)
             locs_seen.add(l.lower())
