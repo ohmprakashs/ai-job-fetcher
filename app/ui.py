@@ -61,10 +61,10 @@ if _SSO_ENABLED:
 
     @app.route("/login")
     def login_page():
-        if _SSO_ENABLED and current_user.is_authenticated:
+        if current_user.is_authenticated:
             return redirect(url_for("index"))
         error = request.args.get("error", "")
-        return render_template("login.html", error=error)
+        return render_template("login.html", error=error, sso_enabled=True)
 
     @app.route("/google-authorized")
     def google_authorized():
@@ -96,7 +96,7 @@ if _SSO_ENABLED:
         return redirect(url_for("login_page"))
 
 else:
-    # SSO not configured — define no-op stubs so routes work without credentials
+    # SSO not configured — login_required is a no-op (dev mode)
     def login_required(f):
         return f
 
@@ -108,7 +108,7 @@ else:
 
     @app.route("/login")
     def login_page():
-        return render_template("login.html", error="Google OAuth not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env")
+        return render_template("login.html", error="Google OAuth not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env", sso_enabled=False)
 
     @app.route("/logout")
     def logout():
