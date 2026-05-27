@@ -198,16 +198,16 @@ def fetch_naukri_jobs_playwright(skills, location="", designation=""):
                 page = context.new_page()
                 Stealth().apply_stealth_sync(page)
 
-                for page_num in range(1, 4):  # Loop up to 3 pages to avoid Flask timeouts
+                for page_num in range(1, 2):  # 1 page only — fast enough, avoids timeouts
                     current_url = naukri_url if page_num == 1 else f"{naukri_url}-{page_num}"
                     try:
-                        page.goto(current_url, timeout=60000)
+                        page.goto(current_url, timeout=30000)
                     except:
                         break
                     
                     page.evaluate("window.scrollTo(0, document.body.scrollHeight);")
                     import time
-                    time.sleep(2)
+                    time.sleep(0.5)
                     
                     try:
                         page.wait_for_selector("div.srp-jobtuple-wrapper, article.jobTuple, div.cust-job-tuple", timeout=10000)
@@ -491,6 +491,7 @@ def fetch_jobs(
     Results are deduplicated before scoring.
     """
     jobs = []
+    jobs_lock = __import__("threading").Lock()
 
     locations = [loc.strip() for loc in location.split(",") if loc.strip()]
     if not locations:
@@ -499,25 +500,44 @@ def fetch_jobs(
     # Split skills into 2 groups so ALL skills drive at least one search query
     skill_pairs = _skill_chunks(skills, max_chunks=2)
 
-    for loc in locations:
-        for skill_pair in skill_pairs:
-            pair_list = [s.strip() for s in skill_pair.split() if s.strip()]
+    import threading
 
-            try:
-                jobs.extend(fetch_linkedin_jobs(pair_list, loc, designation))
-            except Exception as e:
+    def _run_linkedin(pair_list, loc):
+        try:
+            results = fetch_linkedin_jobs(pair_list, loc, designation)
+            with jobs_lock:
+                jobs.extend(results)
+        except Exception as e:
+            with jobs_lock:
                 jobs.append({
                     "title": "LinkedIn fetch error", "company": "", "location": loc,
                     "skills": [], "url": "", "error": str(e), "source": "LinkedIn"
                 })
 
-            try:
-                jobs.extend(fetch_naukri_jobs_playwright(pair_list, loc, designation))
-            except Exception as e:
+    def _run_naukri(pair_list, loc):
+        try:
+            results = fetch_naukri_jobs_playwright(pair_list, loc, designation)
+            with jobs_lock:
+                jobs.extend(results)
+        except Exception as e:
+            with jobs_lock:
                 jobs.append({
                     "title": "Naukri fetch error", "company": "", "location": loc,
                     "skills": [], "url": "", "error": str(e), "source": "Naukri",
                 })
+
+    threads = []
+    for loc in locations:
+        for skill_pair in skill_pairs:
+            pair_list = [s.strip() for s in skill_pair.split() if s.strip()]
+            t1 = threading.Thread(target=_run_linkedin, args=(pair_list, loc))
+            t2 = threading.Thread(target=_run_naukri, args=(pair_list, loc))
+            threads.extend([t1, t2])
+            t1.start()
+            t2.start()
+
+    for t in threads:
+        t.join(timeout=90)  # max 90s per thread
 
     # Deduplicate across all search calls
     jobs = _dedupe_jobs(jobs)

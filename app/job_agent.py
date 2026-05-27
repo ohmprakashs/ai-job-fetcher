@@ -31,6 +31,8 @@ class JobAIAgent:
         
         # 4. Filter the cached jobs according to the current UI filters
         filtered_jobs = []
+        lazy_jd_fetches = 0   # cap lazy HTTP fetches per search to avoid blocking the request
+        _MAX_LAZY_FETCHES = 10
         for job in all_cached_jobs:
             # Skip jobs marked as expired/filled/closed
             if job.get("status") in ("expired", "filled", "closed"):
@@ -106,10 +108,12 @@ class JobAIAgent:
                     for d in desig_list
                 )
                 if (not job_description and job_source == "linkedin"
-                        and job.get("url") and title_has_designation):
+                        and job.get("url") and title_has_designation
+                        and lazy_jd_fetches < _MAX_LAZY_FETCHES):
                     try:
                         from jd_scraper import scrape_jd_text
                         fetched, jd_expired = scrape_jd_text(job["url"], "linkedin")
+                        lazy_jd_fetches += 1
                         if jd_expired:
                             if job.get("id"):
                                 from job_db import mark_job_status
