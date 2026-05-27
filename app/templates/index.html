@@ -589,9 +589,67 @@
             .search-bar .sb-field { border-right: none; border-bottom: 1px solid #e0e0e0; }
             .sb-btn { justify-content: center; padding: 14px; }
         }
+    /* ── Loading Overlay ── */
+    /* ── Top progress bar (non-blocking) ── */
+    #loading-overlay { display: none; }
+    #loading-overlay.active { display: block; }
+    #lo-topbar {
+        display: none;
+        position: fixed;
+        top: 0; left: 0;
+        width: 0%;
+        height: 3px;
+        background: linear-gradient(90deg, #0a66c2, #38bdf8);
+        z-index: 9999;
+        border-radius: 0 2px 2px 0;
+        transition: width 0.3s ease;
+    }
+    #lo-topbar.active {
+        display: block;
+        animation: lo-progress 2.5s ease-in-out infinite;
+    }
+    @keyframes lo-progress {
+        0%   { width: 0%; opacity: 1; }
+        70%  { width: 85%; opacity: 1; }
+        100% { width: 95%; opacity: 0.8; }
+    }
+    /* Small spinner badge bottom-right */
+    #lo-badge {
+        display: none;
+        position: fixed;
+        bottom: 24px; right: 24px;
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 999px;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+        padding: 10px 16px;
+        align-items: center;
+        gap: 10px;
+        z-index: 9999;
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: #334155;
+    }
+    #lo-badge.active { display: flex; }
+    .lo-spinner {
+        width: 18px; height: 18px;
+        border: 2.5px solid #e2e8f0;
+        border-top-color: #0a66c2;
+        border-radius: 50%;
+        animation: lo-spin 0.8s linear infinite;
+        flex-shrink: 0;
+    }
+    @keyframes lo-spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
+<!-- Non-blocking search loading indicators -->
+<div id="loading-overlay"></div>
+<div id="lo-topbar"></div>
+<div id="lo-badge">
+    <div class="lo-spinner"></div>
+    <span id="lo-message">Searching jobs…</span>
+</div>
 <div id="toast-container"></div>
 <!-- Autocomplete dropdowns — placed at body root to escape all overflow:hidden -->
 <ul class="ac-list" id="ac-designation"></ul>
@@ -942,6 +1000,35 @@ function toast(msg, type) {
     setTimeout(function(){ el.classList.add('hide'); setTimeout(function(){ el.remove(); }, 300); }, 3200);
 }
 
+// ── Loading Overlay ───────────────────────────────────
+function showSearchOverlay(msg) {
+    var bar   = document.getElementById('lo-topbar');
+    var badge = document.getElementById('lo-badge');
+    var lm    = document.getElementById('lo-message');
+    if (lm)    lm.textContent = msg || 'Searching jobs…';
+    if (bar)   bar.classList.add('active');
+    if (badge) badge.classList.add('active');
+}
+function hideSearchOverlay() {
+    var bar   = document.getElementById('lo-topbar');
+    var badge = document.getElementById('lo-badge');
+    if (bar)   bar.classList.remove('active');
+    if (badge) badge.classList.remove('active');
+}
+
+// Show overlay whenever the main form is submitted (Search Jobs or Apply Filters)
+(function(){
+    var form = document.getElementById('main-form');
+    if (!form) return;
+    form.addEventListener('submit', function(){
+        showSearchOverlay('Searching jobs…');
+    });
+    // Hide overlay if user navigates back to page (bfcache restore)
+    window.addEventListener('pageshow', function(e){
+        if (e.persisted) hideSearchOverlay();
+    });
+})();
+
 // ── Resume Upload ─────────────────────────────────────
 (function(){
     var input    = document.getElementById('resume');
@@ -974,6 +1061,7 @@ function toast(msg, type) {
                         document.getElementById('designation').value = data.role;
                     toast('Skills extracted — searching jobs now…', 'success');
                     fetchBtn.textContent = '🔍 Searching…';
+                    showSearchOverlay('Searching jobs…');
                     form.submit();
                 } else {
                     toast('Could not extract skills — type them manually', 'error');
