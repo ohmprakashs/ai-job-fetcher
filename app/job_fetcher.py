@@ -338,6 +338,8 @@ def fetch_linkedin_jobs(skills, location="", designation=""):
                         "no longer accepting applications",
                         "no longer available",
                         "position has been filled",
+                        "has hired for this role",
+                        "see who was hired",
                         "applications are closed",
                     ]):
                         continue

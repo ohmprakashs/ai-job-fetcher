@@ -15,9 +15,11 @@ _LI_HEADERS = {
 # Phrases LinkedIn shows when a job is closed
 _EXPIRED_SIGNALS = [
     "no longer accepting applications",
+    "has hired for this role",          # LinkedIn "position filled" signal
+    "see who was hired",
+    "position has been filled",
     "no longer available",
     "this job is no longer",
-    "position has been filled",
     "job has expired",
     "applications are closed",
     "not accepting applications",

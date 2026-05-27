@@ -329,6 +329,8 @@ def get_job_by_id(job_id):
 # Phrases that indicate a job is no longer accepting applications
 _EXPIRED_SIGNALS = [
     "no longer accepting applications",
+    "has hired for this role",          # LinkedIn's "position filled" signal
+    "see who was hired",
     "position has been filled",
     "this job is no longer available",
     "job has expired",
@@ -388,10 +390,10 @@ def get_new_jobs_count() -> int:
 
 def get_stale_jobs_to_check(limit: int = 20) -> list:
     """
-    Return jobs that should be re-validated:
-    - active, have a URL
-    - not checked in last 6h (recently posted) or 24h (older jobs)
-    - not applied (no point checking those)
+    Return active LinkedIn jobs that need re-validation:
+    - never checked (last_checked_at IS NULL), OR
+    - last checked more than 1 hour ago
+    Prioritised: unchecked first, then oldest check time.
     """
     conn = get_conn()
     try:
@@ -400,21 +402,12 @@ def get_stale_jobs_to_check(limit: int = 20) -> list:
             WHERE status = 'active'
             AND url IS NOT NULL AND url != '' AND url != '#'
             AND is_applied = 0
+            AND source = 'LinkedIn'
             AND (
                 last_checked_at IS NULL
-                OR (
-                    -- recently posted jobs (<=3 days): recheck every 6h
-                    CAST(COALESCE(posted_days_ago, 999) AS INTEGER) <= 3
-                    AND last_checked_at < datetime('now', '-6 hours')
-                )
-                OR (
-                    -- older jobs: recheck every 24h
-                    CAST(COALESCE(posted_days_ago, 999) AS INTEGER) > 3
-                    AND last_checked_at < datetime('now', '-24 hours')
-                )
+                OR last_checked_at < datetime('now', '-1 hours')
             )
             ORDER BY
-                CAST(COALESCE(posted_days_ago, 999) AS INTEGER) ASC,
                 last_checked_at ASC NULLS FIRST
             LIMIT ?
         """, (limit,)).fetchall()
