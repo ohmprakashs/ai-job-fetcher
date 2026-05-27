@@ -1387,6 +1387,17 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
         .then(function(d){ AC = d; })
         .catch(function(){});
 
+    // Inline autocomplete: fill the input with the best match and select the completion.
+    // Only triggers when text was added (not deleted).
+    function inlineComplete(input, filtered, q, isDeleting) {
+        if (isDeleting || !q || !filtered.length) return;
+        var best = filtered.find(function(s){ return s.toLowerCase().startsWith(q); });
+        if (best && best.length > q.length) {
+            input.value = best;
+            input.setSelectionRange(q.length, best.length);
+        }
+    }
+
     // ── Generic single-value autocomplete ───────────────
     function positionList(input, list) {
         var r = input.getBoundingClientRect();
@@ -1495,6 +1506,7 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
             if (acList) acList.classList.remove('open');
         }
 
+        var _desigDeleting = false;
         function showDesigAC() {
             if (!acList) return;
             var q = typeIn.value.trim().toLowerCase();
@@ -1519,8 +1531,10 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
             });
             positionList(typeIn, acList);
             acList.classList.add('open');
+            inlineComplete(typeIn, filtered, q, _desigDeleting);
         }
 
+        typeIn.addEventListener('keydown', function(e){ _desigDeleting = (e.key === 'Backspace' || e.key === 'Delete'); });
         typeIn.addEventListener('input', showDesigAC);
         typeIn.addEventListener('focus', showDesigAC);
         typeIn.addEventListener('blur',  function(){ setTimeout(function(){ if (acList) acList.classList.remove('open'); }, 150); });
@@ -1603,11 +1617,11 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
             acList.classList.remove('open');
         }
 
+        var _skillDeleting = false;
         function showSkillAC() {
             var q = typeIn.value.trim().toLowerCase();
             acList.innerHTML = '';
             var allSkills = AC.skills || [];
-            // Show suggestions that match and aren't already added
             var added = chips.map(function(c){ return c.toLowerCase(); });
             var filtered;
             if (q) {
@@ -1615,7 +1629,6 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
                     return s.toLowerCase().includes(q) && !added.includes(s.toLowerCase());
                 }).slice(0, 12);
             } else {
-                // Show popular suggestions when field is focused but empty
                 filtered = allSkills.filter(function(s){ return !added.includes(s.toLowerCase()); }).slice(0, 8);
             }
             if (!filtered.length) { acList.classList.remove('open'); return; }
@@ -1633,8 +1646,10 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
             });
             positionList(typeIn, acList);
             acList.classList.add('open');
+            inlineComplete(typeIn, filtered, q, _skillDeleting);
         }
 
+        typeIn.addEventListener('keydown', function(e){ _skillDeleting = (e.key === 'Backspace' || e.key === 'Delete'); });
         typeIn.addEventListener('input', showSkillAC);
         typeIn.addEventListener('focus', showSkillAC);
         typeIn.addEventListener('blur',  function(){ setTimeout(function(){ acList.classList.remove('open'); }, 150); });
@@ -1713,6 +1728,7 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
             if (acList) acList.classList.remove('open');
         }
 
+        var _locDeleting = false;
         function showLocAC() {
             if (!acList) return;
             var q = typeIn.value.trim().toLowerCase();
@@ -1742,8 +1758,10 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
             });
             positionList(typeIn, acList);
             acList.classList.add('open');
+            inlineComplete(typeIn, filtered, q, _locDeleting);
         }
 
+        typeIn.addEventListener('keydown', function(e){ _locDeleting = (e.key === 'Backspace' || e.key === 'Delete'); });
         typeIn.addEventListener('input', showLocAC);
         typeIn.addEventListener('focus', showLocAC);
         typeIn.addEventListener('blur',  function(){ setTimeout(function(){ if (acList) acList.classList.remove('open'); }, 150); });
