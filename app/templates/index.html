@@ -639,19 +639,26 @@
             *, *::before, *::after { max-width: 100%; }
             body { overflow-x: hidden !important; }
 
-            /* ── Navbar — single slim row ── */
+            /* ── Navbar — compact, wraps to 2 rows on mobile ── */
             .navbar { padding: 0 10px; }
             .navbar-inner {
-                height: 42px !important;
-                padding: 0;
-                flex-wrap: nowrap;
-                gap: 8px;
-                overflow: hidden;
+                height: auto !important;
+                padding: 6px 0;
+                flex-wrap: wrap;
+                gap: 6px;
             }
-            .brand { font-size: .9rem; }
-            .navbar-inner a[href="/auto-apply"] { display: none; }
+            .brand { font-size: .9rem; flex: 1 0 100%; margin-bottom: 2px; }
             #applied-nav-link { padding: 3px 8px; font-size: .75rem; }
             #new-jobs-bell    { padding: 3px 8px; font-size: .75rem; }
+            /* Auto-Apply Bot — visible but compact */
+            .navbar-inner a[href="/auto-apply"] {
+                display: flex !important;
+                padding: 3px 8px;
+                font-size: .75rem;
+                background: #f0f7ff;
+                border: 1px solid #bfdbfe;
+                border-radius: 20px;
+            }
 
             /* ── Hero: hide title/subtitle, shrink padding ── */
             .hero { padding: 8px 10px; }
