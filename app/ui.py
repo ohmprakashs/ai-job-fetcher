@@ -117,7 +117,6 @@ def upload_resume():
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
-    init_db()
     skills = DEFAULT_SKILLS
     jobs = []
     common_jobs = []

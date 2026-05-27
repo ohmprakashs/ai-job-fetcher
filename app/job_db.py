@@ -66,6 +66,12 @@ def init_db():
         WHERE first_seen_at IS NULL AND fetched_at IS NOT NULL
     """)
 
+    # Indexes for fast filtering (safe to call repeatedly — IF NOT EXISTS)
+    c.execute("CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_jobs_fetched_at ON jobs(fetched_at DESC)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_jobs_source ON jobs(source)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_jobs_status_fetched ON jobs(status, fetched_at DESC)")
+
     conn.commit()
     conn.close()
 
@@ -635,7 +641,7 @@ def get_jobs_from_db():
     try:
         # Exclude expired/filled/closed jobs from normal listings
         c.execute(
-            "SELECT * FROM jobs WHERE status NOT IN ('expired','filled','closed') ORDER BY fetched_at DESC"
+            "SELECT * FROM jobs WHERE status NOT IN ('expired','filled','closed') ORDER BY fetched_at DESC LIMIT 1000"
         )
         rows = c.fetchall()
         jobs = []

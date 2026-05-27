@@ -828,6 +828,10 @@
     <span id="lo-message">Searching jobs…</span>
 </div>
 <div id="toast-container"></div>
+<div id="bg-refresh-banner" style="display:none;position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#0a66c2;color:#fff;padding:8px 20px;border-radius:20px;font-size:.82rem;font-weight:600;z-index:9000;box-shadow:0 2px 12px rgba(0,0,0,.25);display:none;align-items:center;gap:8px;">
+  <span style="animation:spin 1s linear infinite;display:inline-block">🔄</span>
+  <span>Fetching live jobs in background…</span>
+</div>
 <!-- Autocomplete dropdowns — placed at body root to escape all overflow:hidden -->
 <ul class="ac-list" id="ac-designation"></ul>
 <ul class="ac-list" id="ac-location"></ul>
@@ -1213,11 +1217,24 @@ function hideSearchOverlay() {
     if (!form) return;
     form.addEventListener('submit', function(){
         showSearchOverlay('Searching jobs…');
+        sessionStorage.setItem('bgFetchPending', '1');
     });
     // Hide overlay if user navigates back to page (bfcache restore)
     window.addEventListener('pageshow', function(e){
         if (e.persisted) hideSearchOverlay();
     });
+})();
+
+// Show "live jobs fetching in background" banner after search results load
+(function(){
+    var banner = document.getElementById('bg-refresh-banner');
+    if (!banner) return;
+    var pending = sessionStorage.getItem('bgFetchPending');
+    if (pending) {
+        sessionStorage.removeItem('bgFetchPending');
+        banner.style.display = 'flex';
+        setTimeout(function(){ banner.style.display = 'none'; }, 45000);
+    }
 })();
 
 // ── Resume Upload ─────────────────────────────────────

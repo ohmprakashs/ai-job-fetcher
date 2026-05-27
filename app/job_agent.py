@@ -14,25 +14,29 @@ class JobAIAgent:
         self.summary = {}
 
     def fetch_and_summarize(self):
-        # 1. Fetch live jobs from the network
-        fetched_live_jobs = fetch_jobs(
-            self.skills,
-            designation=self.designation,
-            location=self.location,
-            experience_years=self.experience_years,
-            posted_within_days=self.posted_within_days,
-        )
-        
-        # 2. Store/update these live jobs in the DB to refresh fetched_at timestamp
-        insert_jobs(fetched_live_jobs)
+        # 1. Fire live fetch in background — do NOT block the request.
+        #    Results will be in the DB by the next search.
+        _skills = list(self.skills)
+        _desig = self.designation
+        _loc = self.location
+        _exp = self.experience_years
+        _days = self.posted_within_days
+        def _bg_fetch():
+            try:
+                live = fetch_jobs(_skills, designation=_desig, location=_loc,
+                                  experience_years=_exp, posted_within_days=_days)
+                insert_jobs(live)
+            except Exception as exc:
+                print(f"[agent] background fetch error: {exc}")
+        threading.Thread(target=_bg_fetch, daemon=True).start()
 
-        # 3. Pull ALL known jobs from the DB so we have a full "cached" list
+        # 2. Pull ALL known jobs from the DB immediately (fast)
         all_cached_jobs = get_jobs_from_db()
-        
-        # 4. Filter the cached jobs according to the current UI filters
+
+        # 3. Filter the cached jobs according to the current UI filters
         filtered_jobs = []
-        lazy_jd_fetches = 0   # cap lazy HTTP fetches per search to avoid blocking the request
-        _MAX_LAZY_FETCHES = 10
+        lazy_jd_fetches = 0   # disabled — JD fetches now happen in startup background only
+        _MAX_LAZY_FETCHES = 0  # set to 0 to keep request path fast
         for job in all_cached_jobs:
             # Skip jobs marked as expired/filled/closed
             if job.get("status") in ("expired", "filled", "closed"):
@@ -107,24 +111,8 @@ class JobAIAgent:
                     )
                     for d in desig_list
                 )
-                if (not job_description and job_source == "linkedin"
-                        and job.get("url") and title_has_designation
-                        and lazy_jd_fetches < _MAX_LAZY_FETCHES):
-                    try:
-                        from jd_scraper import scrape_jd_text
-                        fetched, jd_expired = scrape_jd_text(job["url"], "linkedin")
-                        lazy_jd_fetches += 1
-                        if jd_expired:
-                            if job.get("id"):
-                                from job_db import mark_job_status
-                                mark_job_status(job["id"], "expired")
-                            continue  # skip expired job from results
-                        if fetched:
-                            job_description = fetched
-                            if job.get("id"):
-                                update_job_description(job["id"], fetched)
-                    except Exception:
-                        pass
+                # Lazy JD fetch disabled in request path — handled by startup background thread.
+                # (Keeping lazy_jd_fetches variable for future use but _MAX_LAZY_FETCHES=0 disables it)
 
                 # ── Detect "mirror skills": LinkedIn stores our own search
                 # keywords that happened to appear in the card title.
