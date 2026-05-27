@@ -600,113 +600,145 @@
 
         /* ── Mobile (≤ 767px) ── */
         @media (max-width: 767px) {
-            /* Allow natural page scroll — override desktop fixed-viewport layout */
-            html, body { overflow: auto; height: auto; }
-            #main-form  { overflow: visible; flex: none; }
-            .page-wrapper { overflow: visible; flex: none; height: auto; }
+            /* ── Kill the viewport-lock layout completely ── */
+            html { overflow: auto !important; height: auto !important; }
+            body { overflow: auto !important; height: auto !important; min-height: 100vh; }
+            #main-form {
+                flex: none !important;
+                overflow: visible !important;
+                height: auto !important;
+                min-height: 0 !important;
+            }
+            .page-wrapper {
+                flex: none !important;
+                overflow: visible !important;
+                height: auto !important;
+                min-height: 0 !important;
+            }
             .page-body {
-                grid-template-columns: 1fr;
-                overflow: visible;
-                height: auto;
+                grid-template-columns: 1fr !important;
+                overflow: visible !important;
+                height: auto !important;
+                min-height: 0 !important;
                 padding: 10px 12px;
                 gap: 10px;
             }
-            .results-area { overflow: visible; height: auto; }
-            .sidebar      { overflow: visible; height: auto; max-height: none; }
+            .results-area {
+                overflow: visible !important;
+                height: auto !important;
+                min-height: 0 !important;
+            }
+            .sidebar {
+                overflow: visible !important;
+                height: auto !important;
+                max-height: none !important;
+                min-height: 0 !important;
+            }
 
-            /* Navbar — compact, wrap on overflow */
+            /* ── Prevent horizontal overflow ── */
+            *, *::before, *::after { max-width: 100%; }
+            body { overflow-x: hidden !important; }
+
+            /* ── Navbar ── */
             .navbar { padding: 0 12px; }
             .navbar-inner {
-                height: auto;
+                height: auto !important;
                 padding: 8px 0;
                 flex-wrap: wrap;
                 gap: 8px;
             }
             .brand { font-size: 1rem; }
-            /* Hide Auto-Apply link to save space */
             .navbar-inner a[href="/auto-apply"] { display: none; }
-            /* Shrink Applied badge */
             #applied-nav-link { padding: 4px 10px; font-size: .8rem; }
 
-            /* Hero search */
+            /* ── Hero search ── */
             .hero { padding: 10px 12px; }
             .hero h1 { font-size: .92rem; }
             .hero p  { display: none; }
-            .search-bar { flex-direction: column; }
+            .search-bar {
+                flex-direction: column !important;
+                border-radius: 6px;
+            }
             .search-bar .sb-field {
-                border-right: none;
+                border-right: none !important;
                 border-bottom: 1px solid #e0e0e0;
                 border-radius: 0 !important;
                 padding: 0 12px;
+                width: 100%;
             }
             .search-bar .sb-field:first-child { border-radius: 6px 6px 0 0 !important; }
             .sb-btn {
                 justify-content: center;
                 padding: 14px;
-                border-radius: 0 0 6px 6px;
+                border-radius: 0 0 6px 6px !important;
                 font-size: .95rem;
+                width: 100%;
             }
 
-            /* Resume bar */
+            /* ── Resume bar ── */
             .resume-bar { padding: 8px 12px; }
             .resume-bar-inner { flex-wrap: wrap; gap: 8px; font-size: .82rem; }
 
-            /* Filter toggle button — visible on mobile */
+            /* ── Mobile filter toggle button ── */
             .mobile-filter-toggle {
                 display: flex;
                 align-items: center;
                 justify-content: center;
                 gap: 8px;
                 width: 100%;
-                padding: 9px 16px;
+                padding: 10px 16px;
                 background: #fff;
                 border: 1px solid #d1d5db;
                 border-radius: 6px;
                 font-family: inherit;
-                font-size: .88rem;
+                font-size: .9rem;
                 font-weight: 600;
                 color: #374151;
                 cursor: pointer;
                 margin-bottom: 6px;
             }
-            /* Sidebar hidden until toggled */
-            .sidebar.mobile-collapsed { display: none; }
+            .sidebar.mobile-collapsed { display: none !important; }
 
-            /* Stats strip — 2×2 grid */
+            /* ── Stats strip ── */
             .stats-strip { grid-template-columns: repeat(2, 1fr); }
 
-            /* Job cards */
+            /* ── Job cards ── */
             .job-card { padding: 10px 12px; }
             .card-top { gap: 8px; }
-            .company-logo { width: 36px; height: 36px; font-size: .85rem; }
-            .job-title { font-size: .9rem; }
+            .company-logo { width: 36px; height: 36px; font-size: .85rem; flex-shrink: 0; }
+            .job-title { font-size: .9rem; white-space: normal !important; }
             .job-meta-row { gap: 8px; font-size: .78rem; }
-            .ats-badge { width: 46px; }
+            .ats-badge { width: 46px; flex-shrink: 0; }
             .ats-circle { width: 44px; height: 44px; font-size: .78rem; }
-            .card-footer { gap: 6px; }
-            .card-actions { flex-wrap: wrap; gap: 6px; }
-            .btn { padding: 7px 12px; font-size: .78rem; min-height: 34px; }
+            .card-footer { flex-direction: column; align-items: flex-start; gap: 8px; }
+            .card-actions { flex-wrap: wrap; gap: 6px; width: 100%; }
+            .btn { padding: 8px 12px; font-size: .78rem; min-height: 36px; flex: 1 0 auto; }
 
-            /* Scorecard panel */
+            /* ── Scorecard bars ── */
             .sc-bar-row { grid-template-columns: 80px 1fr 36px; gap: 6px; }
 
-            /* Results header */
+            /* ── Results header ── */
             .results-header { flex-direction: column; align-items: flex-start; gap: 4px; }
             .sort-info { font-size: .78rem; }
 
-            /* Toast — full width at bottom */
+            /* ── Toast ── */
             #toast-container { left: 12px; right: 12px; bottom: 12px; }
             .toast { min-width: unset; width: 100%; }
 
-            /* Loading badge position */
+            /* ── Loading badge ── */
             #lo-badge { bottom: 72px; right: 12px; left: 12px; border-radius: 8px; justify-content: center; }
+
+            /* ── Skill chips ── */
+            .skill-row { flex-wrap: wrap; }
         }
 
-        /* ── Very small (≤ 380px) ── */
-        @media (max-width: 380px) {
-            .hero h1 { font-size: .85rem; }
-            .stats-strip { grid-template-columns: repeat(2, 1fr); gap: 6px; }
-            .btn { padding: 7px 10px; font-size: .74rem; }
+        /* ── Very small (≤ 400px) ── */
+        @media (max-width: 400px) {
+            .hero h1 { font-size: .82rem; }
+            .brand   { font-size: .9rem; }
+            .stats-strip { gap: 6px; }
+            .stat-box .sv { font-size: 1rem; }
+            .btn { font-size: .74rem; padding: 7px 10px; }
             .skill-chip { font-size: .7rem; padding: 2px 7px; }
         }
     /* ── Loading Overlay ── */
