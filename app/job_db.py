@@ -420,7 +420,9 @@ def get_stale_jobs_to_check(limit: int = 20) -> list:
 def check_and_mark_expired_jobs(limit: int = 20) -> dict:
     """
     Background checker: fetch JD text for stale jobs, detect expired signals,
-    mark status accordingly. Runs under _bg_write_lock.
+    mark status accordingly.
+    Sleep happens OUTSIDE the DB lock so we never hold a write connection open
+    during network requests.
     """
     import time
     try:
@@ -429,38 +431,44 @@ def check_and_mark_expired_jobs(limit: int = 20) -> dict:
         return {"checked": 0, "expired": 0, "still_active": 0}
 
     jobs = get_stale_jobs_to_check(limit=limit)
-    checked = expired = still_active = 0
-    now = datetime.utcnow().isoformat()
+    if not jobs:
+        return {"checked": 0, "expired": 0, "still_active": 0}
 
+    # Phase 1: network requests (NO DB lock held)
+    results = []  # (job_id, new_status)
+    now = datetime.utcnow().isoformat()
+    for job in jobs:
+        try:
+            time.sleep(1.5)
+            jd_text, is_expired = scrape_jd_text(job["url"], job["source"].lower())
+            jd_text = jd_text or ""
+            jd_lower = jd_text.lower()
+            if is_expired or not jd_text or len(jd_text) < 30:
+                new_status = "expired"
+            elif any(sig in jd_lower for sig in _EXPIRED_SIGNALS):
+                new_status = "expired"
+            else:
+                new_status = "active"
+            results.append((job["id"], job["title"], job["company"], new_status))
+        except Exception:
+            pass
+
+    # Phase 2: batch write (short lock, no sleeping)
+    checked = expired = still_active = 0
     with _bg_write_lock:
         conn = get_conn()
         try:
-            for job in jobs:
-                try:
-                    time.sleep(1.5)
-                    jd_text, is_expired = scrape_jd_text(job["url"], job["source"].lower())
-                    jd_text = jd_text or ""
-                    jd_lower = jd_text.lower()
-
-                    if is_expired or not jd_text or len(jd_text) < 30:
-                        new_status = "expired"
-                    elif any(sig in jd_lower for sig in _EXPIRED_SIGNALS):
-                        new_status = "expired"
-                    else:
-                        new_status = "active"
-
-                    conn.execute(
-                        "UPDATE jobs SET status=?, last_checked_at=? WHERE id=?",
-                        (new_status, now, job["id"])
-                    )
-                    checked += 1
-                    if new_status == "expired":
-                        expired += 1
-                        print(f"[lifecycle] Expired: {job['title']} @ {job['company']}")
-                    else:
-                        still_active += 1
-                except Exception:
-                    pass
+            for job_id, title, company, new_status in results:
+                conn.execute(
+                    "UPDATE jobs SET status=?, last_checked_at=? WHERE id=?",
+                    (new_status, now, job_id)
+                )
+                checked += 1
+                if new_status == "expired":
+                    expired += 1
+                    print(f"[lifecycle] Expired: {title} @ {company}")
+                else:
+                    still_active += 1
             conn.commit()
         finally:
             conn.close()
@@ -514,15 +522,51 @@ def bulk_mark_expired_from_text() -> int:
 
 
 def insert_jobs(jobs):
-    for job in jobs:
-        insert_or_update_job(job)
+    """Batch-insert all jobs in a single connection + transaction."""
+    if not jobs:
+        return
+    with _bg_write_lock:
+        conn = get_conn()
+        try:
+            now = datetime.utcnow().isoformat()
+            for job in jobs:
+                skills_str = ','.join(job.get('skills', []))
+                conn.execute('''
+                    INSERT INTO jobs (title, company, location, skills, source, fetched_at, url,
+                                      experience_min, experience_max, posted_days_ago, posted_date,
+                                      description, snippet, first_seen_at, status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
+                    ON CONFLICT(title, company, location, source) DO UPDATE SET
+                        skills=excluded.skills,
+                        fetched_at=excluded.fetched_at,
+                        url=excluded.url,
+                        experience_min=excluded.experience_min,
+                        experience_max=excluded.experience_max,
+                        posted_days_ago=excluded.posted_days_ago,
+                        posted_date=excluded.posted_date,
+                        description=COALESCE(NULLIF(excluded.description,''), jobs.description),
+                        snippet=COALESCE(NULLIF(excluded.snippet,''), jobs.snippet),
+                        status=CASE WHEN jobs.status IN ('expired','filled','closed')
+                                    THEN jobs.status ELSE jobs.status END
+                ''', (
+                    job.get('title', ''), job.get('company', ''), job.get('location', ''),
+                    skills_str, job.get('source', ''), now, job.get('url', ''),
+                    job.get('experience_min'), job.get('experience_max'),
+                    job.get('posted_days_ago'), job.get('posted_date'),
+                    job.get('description', '') or '', job.get('snippet', '') or '',
+                    now,
+                ))
+            conn.commit()
+        finally:
+            conn.close()
 
 
 def verify_new_jobs_for_expiry(limit: int = 30) -> int:
     """
     Check jobs that have never been verified (last_checked_at IS NULL)
     and mark them expired if their detail page has no apply button.
-    Runs under _bg_write_lock so it never contends with other writers.
+    Sleep happens OUTSIDE the DB lock so we never hold a write connection
+    open during network requests.
     """
     import time
     try:
@@ -530,48 +574,59 @@ def verify_new_jobs_for_expiry(limit: int = 30) -> int:
     except ImportError:
         return 0
 
+    # Phase 1: read which jobs to check (no write lock needed)
+    conn = get_conn()
+    try:
+        rows = conn.execute("""
+            SELECT id, url, source, title FROM jobs
+            WHERE status = 'active'
+            AND last_checked_at IS NULL
+            AND url IS NOT NULL AND url != ''
+            AND source = 'LinkedIn'
+            ORDER BY fetched_at DESC
+            LIMIT ?
+        """, (limit,)).fetchall()
+    finally:
+        conn.close()
+
+    if not rows:
+        return 0
+
+    # Phase 2: network requests (NO DB lock held)
+    results = []  # (job_id, title, is_expired)
+    now = datetime.utcnow().isoformat()
+    for row in rows:
+        job_id, url, source, title = row
+        try:
+            time.sleep(0.8)
+            _, is_expired = scrape_jd_text(url, source)
+            results.append((job_id, title, is_expired))
+        except Exception as e:
+            print(f"[verify] Error checking {title}: {e}")
+
+    # Phase 3: batch write (short lock, no sleeping)
+    expired_count = 0
     with _bg_write_lock:
         conn = get_conn()
         try:
-            rows = conn.execute("""
-                SELECT id, url, source, title FROM jobs
-                WHERE status = 'active'
-                AND last_checked_at IS NULL
-                AND url IS NOT NULL AND url != ''
-                AND source = 'LinkedIn'
-                ORDER BY fetched_at DESC
-                LIMIT ?
-            """, (limit,)).fetchall()
+            for job_id, title, is_expired in results:
+                if is_expired:
+                    conn.execute(
+                        "UPDATE jobs SET status='expired', last_checked_at=? WHERE id=?",
+                        (now, job_id)
+                    )
+                    expired_count += 1
+                    print(f"[verify] Marked expired: {title}")
+                else:
+                    conn.execute(
+                        "UPDATE jobs SET last_checked_at=? WHERE id=?",
+                        (now, job_id)
+                    )
+            conn.commit()
         finally:
             conn.close()
 
-        expired_count = 0
-        now = datetime.utcnow().isoformat()
-        for row in rows:
-            job_id, url, source, title = row
-            try:
-                time.sleep(0.8)
-                _, is_expired = scrape_jd_text(url, source)
-                conn2 = get_conn()
-                try:
-                    if is_expired:
-                        conn2.execute(
-                            "UPDATE jobs SET status='expired', last_checked_at=? WHERE id=?",
-                            (now, job_id)
-                        )
-                        expired_count += 1
-                        print(f"[verify] Marked expired: {title}")
-                    else:
-                        conn2.execute(
-                            "UPDATE jobs SET last_checked_at=? WHERE id=?",
-                            (now, job_id)
-                        )
-                    conn2.commit()
-                finally:
-                    conn2.close()
-            except Exception as e:
-                print(f"[verify] Error checking {title}: {e}")
-        return expired_count
+    return expired_count
 
 def get_jobs_from_db():
     conn = get_conn()
