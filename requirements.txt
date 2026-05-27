@@ -8,3 +8,5 @@ apscheduler
 python-dotenv
 pypdf
 fpdf2
+flask-dance[google]
+flask-login

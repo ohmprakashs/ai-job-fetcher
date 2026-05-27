@@ -72,8 +72,51 @@ def init_db():
     c.execute("CREATE INDEX IF NOT EXISTS idx_jobs_source ON jobs(source)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_jobs_status_fetched ON jobs(status, fetched_at DESC)")
 
+    # Users table for Google SSO login
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            google_id TEXT UNIQUE NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            name TEXT,
+            picture TEXT,
+            created_at TEXT,
+            last_login TEXT
+        )
+    ''')
+
     conn.commit()
     conn.close()
+
+
+def upsert_google_user(google_id, email, name, picture):
+    """Insert or update a Google-authenticated user. Returns the user row."""
+    conn = get_conn()
+    now = datetime.utcnow().isoformat()
+    try:
+        conn.execute(
+            """INSERT INTO users (google_id, email, name, picture, created_at, last_login)
+               VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT(google_id) DO UPDATE SET
+                 email=excluded.email, name=excluded.name,
+                 picture=excluded.picture, last_login=excluded.last_login""",
+            (google_id, email, name, picture, now, now)
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM users WHERE google_id=?", (google_id,)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def get_user_by_id(user_id):
+    conn = get_conn()
+    conn.row_factory = sqlite3.Row
+    try:
+        row = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
 
 def insert_or_update_job(job):
     conn = get_conn()

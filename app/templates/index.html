@@ -841,7 +841,7 @@
 <nav class="navbar">
     <div class="navbar-inner">
         <div class="brand">🤖 AI Job<span> Matcher</span></div>
-        <div style="margin-left:auto;display:flex;gap:16px;align-items:center;">
+        <div style="margin-left:auto;display:flex;gap:16px;align-items:center;flex-wrap:wrap;">
             <!-- 🔔 New jobs notification bell -->
             {% if new_jobs_count and new_jobs_count > 0 %}
             <span id="new-jobs-bell" title="New jobs added in last 24h"
@@ -857,6 +857,17 @@
             <a href="/auto-apply" style="color:#0a66c2;font-weight:600;font-size:.88rem;">
                 🤖 Auto-Apply Bot
             </a>
+            {% if current_user and current_user.is_authenticated %}
+            <div style="display:flex;align-items:center;gap:8px;border-left:1px solid #e5e7eb;padding-left:16px;">
+                {% if current_user.picture %}
+                <img src="{{ current_user.picture }}" alt="{{ current_user.name }}"
+                     style="width:30px;height:30px;border-radius:50%;border:2px solid #e5e7eb;"
+                     onerror="this.style.display='none'">
+                {% endif %}
+                <span style="font-size:.82rem;color:#374151;font-weight:600;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ current_user.name or current_user.email }}</span>
+                <a href="/logout" style="font-size:.78rem;color:#dc2626;text-decoration:none;font-weight:600;background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:3px 10px;">Sign out</a>
+            </div>
+            {% endif %}
         </div>
     </div>
 </nav>

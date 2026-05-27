@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify
+from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify, session
 from job_agent import JobAIAgent
 from job_fetcher import find_common_jobs
 from job_db import (init_db, mark_job_applied, get_job_applications_status, get_job_by_id,
@@ -7,7 +7,7 @@ from job_db import (init_db, mark_job_applied, get_job_applications_status, get_
                     batch_update_job_skills, _extract_skills_from_text, update_job_description,
                     check_and_mark_expired_jobs, get_new_jobs_count, update_application_status,
                     mark_job_status, get_lifecycle_stats, bulk_mark_expired_from_text,
-                    verify_new_jobs_for_expiry)
+                    verify_new_jobs_for_expiry, upsert_google_user, get_user_by_id)
 import os
 import threading
 import time
@@ -16,11 +16,103 @@ from auto_apply_bot import run_auto_apply
 from cv_generator import build_tailored_pdf, extract_skills_from_cv, extract_text_from_pdf, tailor_cv_smart
 from ai_matcher import generate_ai_match_report, generate_ats_scorecard
 from jd_scraper import scrape_jd_text
+from dotenv import load_dotenv
+
+load_dotenv()
 
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 app = Flask(__name__, template_folder=os.path.join(_BASE_DIR, "templates"))
-app.secret_key = "secret_jobs_key"
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret-change-in-production")
+
+# ── Google OAuth (Flask-Dance) ───────────────────────────────────────────────
+_GOOGLE_CLIENT_ID     = os.environ.get("GOOGLE_CLIENT_ID", "")
+_GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+_SSO_ENABLED = bool(_GOOGLE_CLIENT_ID and _GOOGLE_CLIENT_SECRET)
+
+if _SSO_ENABLED:
+    from flask_dance.contrib.google import make_google_blueprint, google
+    from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
+
+    google_bp = make_google_blueprint(
+        client_id=_GOOGLE_CLIENT_ID,
+        client_secret=_GOOGLE_CLIENT_SECRET,
+        scope=["openid", "https://www.googleapis.com/auth/userinfo.email",
+               "https://www.googleapis.com/auth/userinfo.profile"],
+        redirect_to="google_authorized",
+    )
+    app.register_blueprint(google_bp, url_prefix="/login")
+
+    login_manager = LoginManager()
+    login_manager.login_view = "login_page"
+    login_manager.init_app(app)
+
+    class User(UserMixin):
+        def __init__(self, user_row):
+            self.id = str(user_row["id"])
+            self.email = user_row["email"]
+            self.name = user_row["name"]
+            self.picture = user_row["picture"]
+
+    @login_manager.user_loader
+    def load_user(user_id):
+        row = get_user_by_id(int(user_id))
+        return User(row) if row else None
+
+    @app.route("/login")
+    def login_page():
+        if _SSO_ENABLED and current_user.is_authenticated:
+            return redirect(url_for("index"))
+        error = request.args.get("error", "")
+        return render_template("login.html", error=error)
+
+    @app.route("/google-authorized")
+    def google_authorized():
+        if not google.authorized:
+            return redirect(url_for("google.login"))
+        try:
+            resp = google.get("/oauth2/v2/userinfo")
+            if not resp.ok:
+                return redirect(url_for("login_page", error="Google login failed. Please try again."))
+            info = resp.json()
+            user_row = upsert_google_user(
+                google_id=info["id"],
+                email=info.get("email", ""),
+                name=info.get("name", ""),
+                picture=info.get("picture", ""),
+            )
+            if user_row:
+                login_user(User(user_row), remember=True)
+        except Exception as e:
+            return redirect(url_for("login_page", error=f"Login error: {e}"))
+        return redirect(url_for("index"))
+
+    @app.route("/logout")
+    def logout():
+        logout_user()
+        # Clear Flask-Dance token so re-login prompts Google again
+        if "google_oauth_token" in session:
+            del session["google_oauth_token"]
+        return redirect(url_for("login_page"))
+
+else:
+    # SSO not configured — define no-op stubs so routes work without credentials
+    def login_required(f):
+        return f
+
+    class _FakeUser:
+        is_authenticated = False
+        name = "Guest"
+        email = ""
+        picture = ""
+
+    @app.route("/login")
+    def login_page():
+        return render_template("login.html", error="Google OAuth not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env")
+
+    @app.route("/logout")
+    def logout():
+        return redirect(url_for("index"))
 
 def _startup_background_work():
     """On startup: backfill skills, fetch missing JDs, then run stale-job checker."""
@@ -116,6 +208,7 @@ def upload_resume():
 
 
 @app.route('/', methods=['GET', 'POST'])
+@login_required
 def index():
     skills = DEFAULT_SKILLS
     jobs = []
@@ -192,6 +285,7 @@ def index():
         applied_count=applied_count,
         new_jobs_count=new_jobs_count,
         now_date=now_date,
+        current_user=current_user if _SSO_ENABLED else None,
     )
 
 

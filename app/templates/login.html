@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign In — AI Job Matcher</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    min-height: 100vh;
+    background: linear-gradient(135deg, #0a66c2 0%, #0d47a1 50%, #1a237e 100%);
+    display: flex; align-items: center; justify-content: center;
+    padding: 16px;
+  }
+  .card {
+    background: #fff;
+    border-radius: 20px;
+    padding: 48px 40px;
+    width: 100%;
+    max-width: 420px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+    text-align: center;
+  }
+  .logo { font-size: 2.8rem; margin-bottom: 8px; }
+  .brand { font-size: 1.5rem; font-weight: 800; color: #0a66c2; margin-bottom: 4px; }
+  .tagline { font-size: 0.88rem; color: #6b7280; margin-bottom: 36px; line-height: 1.5; }
+  .divider { display: flex; align-items: center; gap: 12px; margin: 28px 0; }
+  .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: #e5e7eb; }
+  .divider span { font-size: .78rem; color: #9ca3af; white-space: nowrap; }
+  .google-btn {
+    display: flex; align-items: center; justify-content: center; gap: 12px;
+    width: 100%; padding: 14px 20px;
+    background: #fff; color: #374151;
+    border: 1.5px solid #d1d5db; border-radius: 12px;
+    font-family: inherit; font-size: .95rem; font-weight: 600;
+    text-decoration: none; cursor: pointer;
+    transition: border-color .2s, box-shadow .2s, background .15s;
+  }
+  .google-btn:hover {
+    border-color: #0a66c2; box-shadow: 0 0 0 3px rgba(10,102,194,.12);
+    background: #f0f7ff;
+  }
+  .google-icon { width: 22px; height: 22px; flex-shrink: 0; }
+  .features {
+    margin-top: 36px; text-align: left;
+    display: grid; gap: 10px;
+  }
+  .feature { display: flex; align-items: flex-start; gap: 10px; }
+  .feature-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
+  .feature-text { font-size: .83rem; color: #4b5563; line-height: 1.5; }
+  .feature-text strong { color: #111827; }
+  .footer-note { margin-top: 28px; font-size: .75rem; color: #9ca3af; line-height: 1.6; }
+  {% if error %}
+  .error-banner {
+    background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px;
+    padding: 10px 14px; margin-bottom: 20px;
+    font-size: .83rem; color: #dc2626;
+  }
+  {% endif %}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">🤖</div>
+  <div class="brand">AI Job Matcher</div>
+  <div class="tagline">Fetch jobs from LinkedIn &amp; Naukri,<br>score your CV with ATS, generate smart resumes.</div>
+
+  {% if error %}
+  <div class="error-banner">⚠️ {{ error }}</div>
+  {% endif %}
+
+  <a href="{{ url_for('google.login') }}" class="google-btn">
+    <svg class="google-icon" viewBox="0 0 48 48">
+      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.35-8.16 2.35-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+    </svg>
+    Continue with Google
+  </a>
+
+  <div class="divider"><span>What you get</span></div>
+
+  <div class="features">
+    <div class="feature">
+      <div class="feature-icon">🔍</div>
+      <div class="feature-text"><strong>Smart Job Search</strong> — Fetch live jobs from LinkedIn &amp; Naukri matching your skills</div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">🎯</div>
+      <div class="feature-text"><strong>ATS Scorecard</strong> — See how well your CV matches each job description</div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">✨</div>
+      <div class="feature-text"><strong>Smart CV Generator</strong> — Auto-tailor your resume to boost ATS score by 10–20%</div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">🤖</div>
+      <div class="feature-text"><strong>Auto-Apply Bot</strong> — Automatically apply to matching jobs on LinkedIn</div>
+    </div>
+  </div>
+
+  <div class="footer-note">
+    By signing in you agree to use this app responsibly.<br>
+    Your data is stored only on this server and never shared.
+  </div>
+</div>
+</body>
+</html>
