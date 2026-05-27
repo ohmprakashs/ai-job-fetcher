@@ -639,45 +639,63 @@
             *, *::before, *::after { max-width: 100%; }
             body { overflow-x: hidden !important; }
 
-            /* ── Navbar ── */
-            .navbar { padding: 0 12px; }
+            /* ── Navbar — single slim row ── */
+            .navbar { padding: 0 10px; }
             .navbar-inner {
-                height: auto !important;
-                padding: 8px 0;
-                flex-wrap: wrap;
+                height: 42px !important;
+                padding: 0;
+                flex-wrap: nowrap;
                 gap: 8px;
+                overflow: hidden;
             }
-            .brand { font-size: 1rem; }
+            .brand { font-size: .9rem; }
             .navbar-inner a[href="/auto-apply"] { display: none; }
-            #applied-nav-link { padding: 4px 10px; font-size: .8rem; }
+            #applied-nav-link { padding: 3px 8px; font-size: .75rem; }
+            #new-jobs-bell    { padding: 3px 8px; font-size: .75rem; }
 
-            /* ── Hero search ── */
-            .hero { padding: 10px 12px; }
-            .hero h1 { font-size: .92rem; }
+            /* ── Hero: hide title/subtitle, shrink padding ── */
+            .hero { padding: 8px 10px; }
+            .hero h1 { display: none; }
             .hero p  { display: none; }
+
+            /* ── Search bar: compact single-line fields ── */
             .search-bar {
                 flex-direction: column !important;
-                border-radius: 6px;
+                border-radius: 8px;
+                box-shadow: 0 1px 6px rgba(0,0,0,.15);
             }
             .search-bar .sb-field {
                 border-right: none !important;
                 border-bottom: 1px solid #e0e0e0;
                 border-radius: 0 !important;
-                padding: 0 12px;
+                padding: 0 10px;
                 width: 100%;
+                min-height: 42px;
+                max-height: 48px;
+                overflow: hidden;
             }
-            .search-bar .sb-field:first-child { border-radius: 6px 6px 0 0 !important; }
+            .search-bar .sb-field:first-child { border-radius: 8px 8px 0 0 !important; }
+            /* Limit chips inside search fields so they don't expand vertically */
+            .skill-tags-wrap {
+                flex-wrap: nowrap !important;
+                overflow: hidden;
+                max-height: 36px;
+            }
+            .skill-tag-chip { display: none; }
+            .skill-tag-chip:first-of-type { display: inline-flex; }
             .sb-btn {
                 justify-content: center;
-                padding: 14px;
-                border-radius: 0 0 6px 6px !important;
-                font-size: .95rem;
+                padding: 10px;
+                border-radius: 0 0 8px 8px !important;
+                font-size: .9rem;
                 width: 100%;
+                min-height: 42px;
             }
 
-            /* ── Resume bar ── */
-            .resume-bar { padding: 8px 12px; }
-            .resume-bar-inner { flex-wrap: wrap; gap: 8px; font-size: .82rem; }
+            /* ── Resume bar — one-liner ── */
+            .resume-bar { padding: 5px 10px; }
+            .resume-bar-inner { flex-wrap: nowrap; gap: 6px; font-size: .78rem; overflow: hidden; }
+            .resume-bar label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
             /* ── Mobile filter toggle button ── */
             .mobile-filter-toggle {
