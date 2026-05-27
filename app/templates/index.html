@@ -1525,14 +1525,16 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
         typeIn.addEventListener('focus', showDesigAC);
         typeIn.addEventListener('blur',  function(){ setTimeout(function(){ if (acList) acList.classList.remove('open'); }, 150); });
         typeIn.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter' || e.key === ',') {
+            var items = acList ? acList.querySelectorAll('.ac-item') : [];
+            var isOpen = acList && acList.classList.contains('open') && items.length > 0;
+            if (e.key === 'Enter' || e.key === ',' || e.key === 'Tab') {
                 e.preventDefault();
-                var v = typeIn.value.replace(',','').trim();
-                if (v) addDesignation(v);
+                var active = acList ? acList.querySelector('.active') : null;
+                var pick = active ? active.textContent : (isOpen ? items[0].textContent : typeIn.value.replace(',','').trim());
+                if (pick) addDesignation(pick);
             } else if (e.key === 'Backspace' && !typeIn.value && chips.length) {
                 chips.pop(); hidden.value = chips.join(', '); renderChips();
             } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-                var items = acList ? acList.querySelectorAll('.ac-item') : [];
                 var cur   = acList ? acList.querySelector('.active') : null;
                 var idx   = Array.from(items).indexOf(cur);
                 if (e.key === 'ArrowDown') idx = Math.min(idx+1, items.length-1);
@@ -1637,25 +1639,26 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
         typeIn.addEventListener('focus', showSkillAC);
         typeIn.addEventListener('blur',  function(){ setTimeout(function(){ acList.classList.remove('open'); }, 150); });
         typeIn.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter' || e.key === ',') {
+            var items = acList ? acList.querySelectorAll('.ac-item') : [];
+            var isOpen = acList && acList.classList.contains('open') && items.length > 0;
+            if (e.key === 'Enter' || e.key === ',' || e.key === 'Tab') {
                 e.preventDefault();
-                var v = typeIn.value.replace(',','').trim();
-                if (v) addSkill(v); else return;
+                var active = acList ? acList.querySelector('.active') : null;
+                var pick = active ? active.textContent : (isOpen ? items[0].textContent : typeIn.value.replace(',','').trim());
+                if (pick) addSkill(pick);
             } else if (e.key === 'Backspace' && !typeIn.value && chips.length) {
                 chips.pop();
                 hidden.value = chips.join(', ');
                 renderChips();
             } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-                var items = acList.querySelectorAll('.ac-item');
-                var cur = acList.querySelector('.active');
+                var cur = acList ? acList.querySelector('.active') : null;
                 var idx = Array.from(items).indexOf(cur);
                 if (e.key === 'ArrowDown') idx = Math.min(idx+1, items.length-1);
                 else idx = Math.max(idx-1, 0);
                 items.forEach(function(it,i){ it.classList.toggle('active', i===idx); });
                 e.preventDefault();
-            } else if (e.key === 'Enter') {
-                var active = acList.querySelector('.active');
-                if (active) { e.preventDefault(); addSkill(active.textContent); }
+            } else if (e.key === 'Escape') {
+                if (acList) acList.classList.remove('open');
             }
         });
 
@@ -1745,16 +1748,18 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
         typeIn.addEventListener('focus', showLocAC);
         typeIn.addEventListener('blur',  function(){ setTimeout(function(){ if (acList) acList.classList.remove('open'); }, 150); });
         typeIn.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter' || e.key === ',') {
+            var items = acList ? acList.querySelectorAll('.ac-item') : [];
+            var isOpen = acList && acList.classList.contains('open') && items.length > 0;
+            if (e.key === 'Enter' || e.key === ',' || e.key === 'Tab') {
                 e.preventDefault();
-                var v = typeIn.value.replace(',','').trim();
-                if (v) addLocation(v);
+                var active = acList ? acList.querySelector('.active') : null;
+                var pick = active ? active.textContent : (isOpen ? items[0].textContent : typeIn.value.replace(',','').trim());
+                if (pick) addLocation(pick);
             } else if (e.key === 'Backspace' && !typeIn.value && chips.length) {
                 chips.pop();
                 hidden.value = chips.join(', ');
                 renderChips();
             } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-                var items = acList ? acList.querySelectorAll('.ac-item') : [];
                 var cur   = acList ? acList.querySelector('.active') : null;
                 var idx   = Array.from(items).indexOf(cur);
                 if (e.key === 'ArrowDown') idx = Math.min(idx+1, items.length-1);
