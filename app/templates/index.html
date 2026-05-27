@@ -1541,11 +1541,15 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
         typeIn.addEventListener('keydown', function(e) {
             var items = acList ? acList.querySelectorAll('.ac-item') : [];
             var isOpen = acList && acList.classList.contains('open') && items.length > 0;
-            if (e.key === 'Enter' || e.key === ',' || e.key === 'Tab') {
+            if (e.key === 'Enter' || e.key === ',') {
                 e.preventDefault();
                 var active = acList ? acList.querySelector('.active') : null;
                 var pick = active ? active.textContent : (isOpen ? items[0].textContent : typeIn.value.replace(',','').trim());
                 if (pick) addDesignation(pick);
+            } else if (e.key === 'Tab') {
+                var active = acList ? acList.querySelector('.active') : null;
+                var pick = active ? active.textContent : (isOpen ? items[0].textContent : typeIn.value.replace(',','').trim());
+                if (pick) { e.preventDefault(); addDesignation(pick); }
             } else if (e.key === 'Backspace' && !typeIn.value && chips.length) {
                 chips.pop(); hidden.value = chips.join(', '); renderChips();
             } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -1656,11 +1660,15 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
         typeIn.addEventListener('keydown', function(e) {
             var items = acList ? acList.querySelectorAll('.ac-item') : [];
             var isOpen = acList && acList.classList.contains('open') && items.length > 0;
-            if (e.key === 'Enter' || e.key === ',' || e.key === 'Tab') {
+            if (e.key === 'Enter' || e.key === ',') {
                 e.preventDefault();
                 var active = acList ? acList.querySelector('.active') : null;
                 var pick = active ? active.textContent : (isOpen ? items[0].textContent : typeIn.value.replace(',','').trim());
                 if (pick) addSkill(pick);
+            } else if (e.key === 'Tab') {
+                var active = acList ? acList.querySelector('.active') : null;
+                var pick = active ? active.textContent : (isOpen ? items[0].textContent : typeIn.value.replace(',','').trim());
+                if (pick) { e.preventDefault(); addSkill(pick); }
             } else if (e.key === 'Backspace' && !typeIn.value && chips.length) {
                 chips.pop();
                 hidden.value = chips.join(', ');
@@ -1768,11 +1776,15 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
         typeIn.addEventListener('keydown', function(e) {
             var items = acList ? acList.querySelectorAll('.ac-item') : [];
             var isOpen = acList && acList.classList.contains('open') && items.length > 0;
-            if (e.key === 'Enter' || e.key === ',' || e.key === 'Tab') {
+            if (e.key === 'Enter' || e.key === ',') {
                 e.preventDefault();
                 var active = acList ? acList.querySelector('.active') : null;
                 var pick = active ? active.textContent : (isOpen ? items[0].textContent : typeIn.value.replace(',','').trim());
                 if (pick) addLocation(pick);
+            } else if (e.key === 'Tab') {
+                var active = acList ? acList.querySelector('.active') : null;
+                var pick = active ? active.textContent : (isOpen ? items[0].textContent : typeIn.value.replace(',','').trim());
+                if (pick) { e.preventDefault(); addLocation(pick); }
             } else if (e.key === 'Backspace' && !typeIn.value && chips.length) {
                 chips.pop();
                 hidden.value = chips.join(', ');
