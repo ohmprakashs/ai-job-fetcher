@@ -527,10 +527,16 @@ def ai_match(job_id):
         return jsonify({"status": "error", "message": "Job or URL not found."}), 404
         
     resume_path = os.path.join(_BASE_DIR, "..", "sample_cv.pdf")
-    jd_text, is_expired = scrape_jd_text(job.get("url", ""), job.get("source", ""))
-    if is_expired:
-        mark_job_status(job_id, "expired")
-        return jsonify({"status": "error", "message": "This job is no longer accepting applications."}), 410
+    # Use cached description first; only scrape if missing; ignore is_expired entirely
+    jd_text = (job.get("description") or "").strip()
+    if not jd_text:
+        try:
+            scraped, _ = scrape_jd_text(job.get("url", ""), job.get("source", ""))
+            jd_text = (scraped or "").strip()
+        except Exception:
+            pass
+    if not jd_text:
+        jd_text = (job.get("snippet") or "").strip()
     report = generate_ai_match_report(resume_path, job, jd_text)
     return jsonify({"status": "success", "report": report})
 
@@ -544,22 +550,15 @@ def ats_scorecard(job_id):
 
     resume_path = os.path.join(_BASE_DIR, "..", "sample_cv.pdf")
 
-    # Use cached JD text if available — avoid re-scraping every click
+    # ATS = skill matching only. NEVER block on expiry.
+    # Use cached description first; scrape only if missing; ignore is_expired.
     jd_text = (job.get("description") or "").strip()
     if not jd_text:
-        jd_text, is_expired = scrape_jd_text(job.get("url", ""), job.get("source", ""))
-        # Only mark expired if we got definitive expired signal AND some text
-        # A blank response could be a network/rate-limit issue, not true expiry
-        if is_expired and jd_text == "":
-            # Double-check: if job is already in DB as active and we got no text,
-            # treat as scrape failure rather than true expiry
-            if job.get("status") == "active":
-                jd_text = job.get("snippet") or ""
-            else:
-                mark_job_status(job_id, "expired")
-                return jsonify({"status": "error", "message": "This job is no longer accepting applications."}), 410
-
-    # Fall back to snippet if still no text
+        try:
+            scraped, _ = scrape_jd_text(job.get("url", ""), job.get("source", ""))
+            jd_text = (scraped or "").strip()
+        except Exception:
+            pass
     if not jd_text:
         jd_text = (job.get("snippet") or "").strip()
 
@@ -585,15 +584,16 @@ def smart_tailor_cv(job_id):
 
     output_pdf_path = os.path.join(_BASE_DIR, "..", f"smart_cv_{job_id}.pdf")
 
-    # Use cached JD text first; only scrape if nothing cached
+    # Use cached description first; scrape only if missing; ignore is_expired.
     jd_text = (job.get("description") or "").strip()
     if not jd_text:
-        jd_text, is_expired = scrape_jd_text(job.get("url", ""), job.get("source", ""))
-        if is_expired and jd_text == "" and job.get("status") != "active":
-            mark_job_status(job_id, "expired")
-            return "This job is no longer accepting applications.", 410
-        if not jd_text:
-            jd_text = (job.get("snippet") or "").strip()
+        try:
+            scraped, _ = scrape_jd_text(job.get("url", ""), job.get("source", ""))
+            jd_text = (scraped or "").strip()
+        except Exception:
+            pass
+    if not jd_text:
+        jd_text = (job.get("snippet") or "").strip()
 
     try:
         result = tailor_cv_smart(base_pdf_path, job, output_pdf_path, jd_text)
