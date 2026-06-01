@@ -197,11 +197,14 @@ def account_settings():
         action = request.form.get("action", "profile")
         if action == "profile":
             name  = request.form.get("name", "").strip()
+            email = request.form.get("email", "").strip().lower()
             phone = request.form.get("phone", "").strip()
             if not name:
                 error = "Name cannot be empty."
+            elif not email or "@" not in email:
+                error = "Please enter a valid email address."
             else:
-                user_row, err = update_user_profile(uid, name=name, phone=phone or None)
+                user_row, err = update_user_profile(uid, name=name, email=email, phone=phone or None)
                 if err:
                     error = err
                 else:

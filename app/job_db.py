@@ -173,13 +173,21 @@ def get_user_by_id(user_id):
     finally:
         conn.close()
 
-def update_user_profile(user_id, name=None, phone=None, new_password_hash=None):
+def update_user_profile(user_id, name=None, email=None, phone=None, new_password_hash=None):
     """Update editable profile fields. Returns (user_row, error_string)."""
     conn = get_conn()
     try:
         updates, params = [], []
         if name is not None:
             updates.append("name=?"); params.append(name.strip())
+        if email is not None:
+            new_email = email.strip().lower()
+            # Check uniqueness against other accounts
+            existing = conn.execute("SELECT id FROM users WHERE email=? AND id!=?",
+                                    (new_email, int(user_id))).fetchone()
+            if existing:
+                return None, "This email is already used by another account."
+            updates.append("email=?"); params.append(new_email)
         if phone is not None:
             updates.append("phone=?"); params.append(phone.strip() or None)
         if new_password_hash is not None:

@@ -181,9 +181,15 @@
 
       <div class="form-group">
         <label for="email">Email Address</label>
+        {% if user.auth_type == 'google' %}
         <input type="email" id="email" value="{{ user.email }}" disabled
-               title="Email cannot be changed">
-        <div class="pw-hint">Email address cannot be changed.</div>
+               title="Managed by Google — cannot be changed here">
+        <div class="pw-hint">🔵 Managed by Google. Change email via your Google account.</div>
+        {% else %}
+        <input type="email" id="email" name="email" value="{{ user.email }}"
+               placeholder="your@email.com" required autocomplete="email">
+        <div class="pw-hint">Changing your email will require you to log in with the new address.</div>
+        {% endif %}
       </div>
 
       <div class="form-group">
