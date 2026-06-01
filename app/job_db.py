@@ -72,21 +72,39 @@ def init_db():
     c.execute("CREATE INDEX IF NOT EXISTS idx_jobs_source ON jobs(source)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_jobs_status_fetched ON jobs(status, fetched_at DESC)")
 
-    # Users table for Google SSO login
+    # Users table (supports both email+password and Google SSO)
     c.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            google_id TEXT UNIQUE NOT NULL,
             email TEXT UNIQUE NOT NULL,
             name TEXT,
             picture TEXT,
+            phone TEXT,
+            password_hash TEXT,
+            auth_type TEXT DEFAULT 'email',
+            google_id TEXT,
             created_at TEXT,
             last_login TEXT
         )
     ''')
+    # Migrate: add new columns to existing table if not present
+    for col, ctype in [("phone", "TEXT"), ("password_hash", "TEXT"),
+                       ("auth_type", "TEXT DEFAULT 'email'"), ("google_id", "TEXT")]:
+        try:
+            c.execute(f"ALTER TABLE users ADD COLUMN {col} {ctype}")
+        except sqlite3.OperationalError:
+            pass
 
     conn.commit()
     conn.close()
+
+
+# ── User DB helpers ──────────────────────────────────────────────────────────
+
+def _user_row(conn, where_clause, param):
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(f"SELECT * FROM users WHERE {where_clause}", (param,)).fetchone()
+    return dict(row) if row else None
 
 
 def upsert_google_user(google_id, email, name, picture):
@@ -95,16 +113,54 @@ def upsert_google_user(google_id, email, name, picture):
     now = datetime.utcnow().isoformat()
     try:
         conn.execute(
-            """INSERT INTO users (google_id, email, name, picture, created_at, last_login)
-               VALUES (?, ?, ?, ?, ?, ?)
-               ON CONFLICT(google_id) DO UPDATE SET
-                 email=excluded.email, name=excluded.name,
+            """INSERT INTO users (google_id, email, name, picture, auth_type, created_at, last_login)
+               VALUES (?, ?, ?, ?, 'google', ?, ?)
+               ON CONFLICT(email) DO UPDATE SET
+                 google_id=excluded.google_id, name=excluded.name,
                  picture=excluded.picture, last_login=excluded.last_login""",
             (google_id, email, name, picture, now, now)
         )
         conn.commit()
-        row = conn.execute("SELECT * FROM users WHERE google_id=?", (google_id,)).fetchone()
-        return dict(row) if row else None
+        return _user_row(conn, "email=?", email)
+    finally:
+        conn.close()
+
+
+def register_user(name, email, password_hash, phone=None):
+    """Create a new email+password user. Returns (user_row, error_string)."""
+    conn = get_conn()
+    now = datetime.utcnow().isoformat()
+    try:
+        conn.execute(
+            """INSERT INTO users (name, email, password_hash, phone, auth_type, created_at, last_login)
+               VALUES (?, ?, ?, ?, 'email', ?, ?)""",
+            (name.strip(), email.strip().lower(), password_hash, phone or None, now, now)
+        )
+        conn.commit()
+        return _user_row(conn, "email=?", email.strip().lower()), None
+    except sqlite3.IntegrityError as e:
+        if "email" in str(e).lower():
+            return None, "An account with this email already exists."
+        return None, f"Registration failed: {e}"
+    finally:
+        conn.close()
+
+
+def get_user_by_email(email):
+    conn = get_conn()
+    conn.row_factory = sqlite3.Row
+    try:
+        return _user_row(conn, "email=?", email.strip().lower())
+    finally:
+        conn.close()
+
+
+def update_last_login(user_id):
+    conn = get_conn()
+    try:
+        conn.execute("UPDATE users SET last_login=? WHERE id=?",
+                     (datetime.utcnow().isoformat(), user_id))
+        conn.commit()
     finally:
         conn.close()
 
@@ -113,8 +169,7 @@ def get_user_by_id(user_id):
     conn = get_conn()
     conn.row_factory = sqlite3.Row
     try:
-        row = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
-        return dict(row) if row else None
+        return _user_row(conn, "id=?", int(user_id))
     finally:
         conn.close()
 
