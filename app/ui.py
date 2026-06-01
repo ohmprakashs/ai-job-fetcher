@@ -196,20 +196,22 @@ def account_settings():
     if request.method == "POST":
         action = request.form.get("action", "profile")
         if action == "profile":
-            name  = request.form.get("name", "").strip()
-            email = request.form.get("email", "").strip().lower()
-            phone = request.form.get("phone", "").strip()
+            name         = request.form.get("name", "").strip()
+            email        = request.form.get("email", "").strip().lower()
+            phone        = request.form.get("phone", "").strip()
+            linkedin_url = request.form.get("linkedin_url", "").strip()
             if not name:
                 error = "Name cannot be empty."
             elif not email or "@" not in email:
                 error = "Please enter a valid email address."
             else:
-                user_row, err = update_user_profile(uid, name=name, email=email, phone=phone or None)
+                user_row, err = update_user_profile(
+                    uid, name=name, email=email,
+                    phone=phone or None, linkedin_url=linkedin_url)
                 if err:
                     error = err
                 else:
                     success = "Profile updated successfully."
-                    # Refresh session user object for SSO
                     if _SSO_ENABLED:
                         from flask_login import login_user as _login_user
                         _login_user(_UserObj(user_row), remember=True)

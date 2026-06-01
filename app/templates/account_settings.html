@@ -167,6 +167,13 @@
         {% else %}
         <div class="badge-sso" style="background:#f0fdf4;border-color:#86efac;color:#16a34a;">📧 Email Account</div>
         {% endif %}
+        {% if user.linkedin_url %}
+        <div class="badge-sso" style="background:#e8f0fe;border-color:#93c5fd;color:#0a66c2;margin-top:4px;">
+          <a href="{{ user.linkedin_url }}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;">
+            🔗 LinkedIn Connected ↗
+          </a>
+        </div>
+        {% endif %}
       </div>
     </div>
 
@@ -196,6 +203,30 @@
         <label for="phone">Phone Number <span class="optional">(optional)</span></label>
         <input type="tel" id="phone" name="phone" value="{{ user.phone or '' }}"
                placeholder="+91 98765 43210">
+      </div>
+
+      <div class="form-group">
+        <label for="linkedin_url">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="#0a66c2" style="vertical-align:middle;margin-right:4px;"><path d="M20.45 20.45h-3.554v-5.569c0-1.328-.025-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.049c.476-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.284zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+          LinkedIn Profile <span class="optional">(optional)</span>
+        </label>
+        <div style="position:relative;">
+          <input type="url" id="linkedin_url" name="linkedin_url"
+                 value="{{ user.linkedin_url or '' }}"
+                 placeholder="https://linkedin.com/in/your-profile"
+                 style="padding-left: 40px;">
+          <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:.85rem;color:#0a66c2;pointer-events:none;">🔗</span>
+        </div>
+        {% if user.linkedin_url %}
+        <div class="pw-hint">
+          <a href="{{ user.linkedin_url }}" target="_blank" rel="noopener"
+             style="color:#0a66c2;text-decoration:none;font-weight:500;">
+            🔵 View your LinkedIn profile ↗
+          </a>
+        </div>
+        {% else %}
+        <div class="pw-hint">Add your LinkedIn URL to enhance job matching.</div>
+        {% endif %}
       </div>
 
       <button type="submit" class="btn btn-primary">💾 Save Profile</button>

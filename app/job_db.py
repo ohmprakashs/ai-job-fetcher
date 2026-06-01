@@ -83,13 +83,15 @@ def init_db():
             password_hash TEXT,
             auth_type TEXT DEFAULT 'email',
             google_id TEXT,
+            linkedin_url TEXT,
             created_at TEXT,
             last_login TEXT
         )
     ''')
     # Migrate: add new columns to existing table if not present
     for col, ctype in [("phone", "TEXT"), ("password_hash", "TEXT"),
-                       ("auth_type", "TEXT DEFAULT 'email'"), ("google_id", "TEXT")]:
+                       ("auth_type", "TEXT DEFAULT 'email'"), ("google_id", "TEXT"),
+                       ("linkedin_url", "TEXT")]:
         try:
             c.execute(f"ALTER TABLE users ADD COLUMN {col} {ctype}")
         except sqlite3.OperationalError:
@@ -173,7 +175,7 @@ def get_user_by_id(user_id):
     finally:
         conn.close()
 
-def update_user_profile(user_id, name=None, email=None, phone=None, new_password_hash=None):
+def update_user_profile(user_id, name=None, email=None, phone=None, linkedin_url=None, new_password_hash=None):
     """Update editable profile fields. Returns (user_row, error_string)."""
     conn = get_conn()
     try:
@@ -182,7 +184,6 @@ def update_user_profile(user_id, name=None, email=None, phone=None, new_password
             updates.append("name=?"); params.append(name.strip())
         if email is not None:
             new_email = email.strip().lower()
-            # Check uniqueness against other accounts
             existing = conn.execute("SELECT id FROM users WHERE email=? AND id!=?",
                                     (new_email, int(user_id))).fetchone()
             if existing:
@@ -190,6 +191,11 @@ def update_user_profile(user_id, name=None, email=None, phone=None, new_password
             updates.append("email=?"); params.append(new_email)
         if phone is not None:
             updates.append("phone=?"); params.append(phone.strip() or None)
+        if linkedin_url is not None:
+            url = linkedin_url.strip()
+            if url and not url.startswith("http"):
+                url = "https://" + url
+            updates.append("linkedin_url=?"); params.append(url or None)
         if new_password_hash is not None:
             updates.append("password_hash=?"); params.append(new_password_hash)
         if not updates:
