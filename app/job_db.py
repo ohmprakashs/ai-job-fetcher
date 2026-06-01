@@ -173,6 +173,29 @@ def get_user_by_id(user_id):
     finally:
         conn.close()
 
+def update_user_profile(user_id, name=None, phone=None, new_password_hash=None):
+    """Update editable profile fields. Returns (user_row, error_string)."""
+    conn = get_conn()
+    try:
+        updates, params = [], []
+        if name is not None:
+            updates.append("name=?"); params.append(name.strip())
+        if phone is not None:
+            updates.append("phone=?"); params.append(phone.strip() or None)
+        if new_password_hash is not None:
+            updates.append("password_hash=?"); params.append(new_password_hash)
+        if not updates:
+            return _user_row(conn, "id=?", int(user_id)), None
+        params.append(int(user_id))
+        conn.execute(f"UPDATE users SET {', '.join(updates)} WHERE id=?", params)
+        conn.commit()
+        return _user_row(conn, "id=?", int(user_id)), None
+    except Exception as e:
+        return None, str(e)
+    finally:
+        conn.close()
+
+
 def insert_or_update_job(job):
     conn = get_conn()
     c = conn.cursor()

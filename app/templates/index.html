@@ -865,6 +865,7 @@
                      onerror="this.style.display='none'">
                 {% endif %}
                 <span style="font-size:.82rem;color:#374151;font-weight:600;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ current_user.name or current_user.email }}</span>
+                <a href="/account-settings" style="font-size:.78rem;color:#2563eb;text-decoration:none;font-weight:600;background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:3px 10px;">⚙️ Settings</a>
                 <a href="/logout" style="font-size:.78rem;color:#dc2626;text-decoration:none;font-weight:600;background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:3px 10px;">Sign out</a>
             </div>
             {% endif %}

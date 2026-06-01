@@ -8,7 +8,7 @@ from job_db import (init_db, mark_job_applied, get_job_applications_status, get_
                     check_and_mark_expired_jobs, get_new_jobs_count, update_application_status,
                     mark_job_status, get_lifecycle_stats, bulk_mark_expired_from_text,
                     verify_new_jobs_for_expiry, upsert_google_user, get_user_by_id,
-                    register_user, get_user_by_email, update_last_login)
+                    register_user, get_user_by_email, update_last_login, update_user_profile)
 import os
 import threading
 import time
@@ -181,6 +181,58 @@ def logout():
     else:
         session.pop("user_id", None)
     return redirect(url_for("login_page"))
+
+
+@app.route("/account-settings", methods=["GET", "POST"])
+@login_required
+def account_settings():
+    cu = _get_current_user()
+    uid = session.get("user_id") if not _SSO_ENABLED else (cu.id if hasattr(cu, "id") else None)
+    user_row = get_user_by_id(int(uid)) if uid else None
+    if not user_row:
+        return redirect(url_for("login_page"))
+
+    error, success = "", ""
+    if request.method == "POST":
+        action = request.form.get("action", "profile")
+        if action == "profile":
+            name  = request.form.get("name", "").strip()
+            phone = request.form.get("phone", "").strip()
+            if not name:
+                error = "Name cannot be empty."
+            else:
+                user_row, err = update_user_profile(uid, name=name, phone=phone or None)
+                if err:
+                    error = err
+                else:
+                    success = "Profile updated successfully."
+                    # Refresh session user object for SSO
+                    if _SSO_ENABLED:
+                        from flask_login import login_user as _login_user
+                        _login_user(_UserObj(user_row), remember=True)
+
+        elif action == "password":
+            if user_row.get("auth_type") == "google":
+                error = "Password cannot be changed for Google Sign-In accounts."
+            else:
+                current_pw  = request.form.get("current_password", "")
+                new_pw      = request.form.get("new_password", "")
+                confirm_pw  = request.form.get("confirm_password", "")
+                if not check_password_hash(user_row.get("password_hash", ""), current_pw):
+                    error = "Current password is incorrect."
+                elif len(new_pw) < 8:
+                    error = "New password must be at least 8 characters."
+                elif new_pw != confirm_pw:
+                    error = "New passwords do not match."
+                else:
+                    user_row, err = update_user_profile(uid, new_password_hash=generate_password_hash(new_pw))
+                    error = err or ""
+                    if not err:
+                        success = "Password changed successfully."
+
+    return render_template("account_settings.html", user=user_row, error=error,
+                           success=success, sso_enabled=_SSO_ENABLED,
+                           current_user=_get_current_user())
 
 
 # Helper: get current user for non-SSO mode

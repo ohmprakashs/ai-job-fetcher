@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Account Settings – AI Job Matcher</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', system-ui, sans-serif; background: #f3f4f6; color: #111827; min-height: 100vh; }
+
+    /* ── Navbar ── */
+    .navbar {
+      background: #fff;
+      border-bottom: 1px solid #e5e7eb;
+      padding: 0 24px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .navbar-brand { font-size: 1rem; font-weight: 700; color: #1d4ed8; text-decoration: none; display: flex; align-items: center; gap: 8px; }
+    .navbar-brand span { font-size: 1.4rem; }
+    .navbar-right { display: flex; align-items: center; gap: 12px; }
+    .navbar-right a { font-size: .82rem; color: #6b7280; text-decoration: none; font-weight: 500; }
+    .navbar-right a:hover { color: #1d4ed8; }
+
+    /* ── Page layout ── */
+    .page-wrap { max-width: 680px; margin: 40px auto; padding: 0 16px 60px; }
+    h1 { font-size: 1.45rem; font-weight: 700; color: #111827; margin-bottom: 6px; }
+    .subtitle { font-size: .88rem; color: #6b7280; margin-bottom: 28px; }
+
+    /* ── Card ── */
+    .card {
+      background: #fff;
+      border-radius: 14px;
+      border: 1px solid #e5e7eb;
+      padding: 28px 32px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.06);
+    }
+    .card-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #1e40af;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid #e5e7eb;
+      padding-bottom: 12px;
+    }
+
+    /* ── Avatar ── */
+    .avatar-row { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
+    .avatar {
+      width: 68px; height: 68px; border-radius: 50%;
+      background: linear-gradient(135deg,#3b82f6,#6366f1);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.6rem; font-weight: 700; color: #fff;
+      flex-shrink: 0; border: 3px solid #e5e7eb;
+      overflow: hidden;
+    }
+    .avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .avatar-info { flex: 1; }
+    .avatar-info .user-name { font-size: 1.05rem; font-weight: 700; color: #111827; }
+    .avatar-info .user-email { font-size: .83rem; color: #6b7280; margin-top: 2px; }
+    .badge-sso {
+      display: inline-flex; align-items: center; gap: 4px;
+      background: #eff6ff; border: 1px solid #bfdbfe;
+      color: #1d4ed8; font-size: .72rem; font-weight: 600;
+      border-radius: 20px; padding: 2px 9px; margin-top: 6px;
+    }
+
+    /* ── Form ── */
+    .form-group { margin-bottom: 18px; }
+    label { display: block; font-size: .82rem; font-weight: 600; color: #374151; margin-bottom: 6px; }
+    .optional { font-weight: 400; color: #9ca3af; font-size: .75rem; margin-left: 4px; }
+    input[type=text], input[type=email], input[type=tel], input[type=password] {
+      width: 100%; padding: 10px 14px;
+      border: 1.5px solid #d1d5db; border-radius: 9px;
+      font-size: .92rem; color: #111827; background: #fff;
+      transition: border-color .2s;
+      outline: none;
+    }
+    input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,.12); }
+    input:disabled { background: #f9fafb; color: #9ca3af; cursor: not-allowed; }
+
+    /* Password strength */
+    .pw-bar-wrap { height: 5px; border-radius: 3px; background: #e5e7eb; margin-top: 6px; overflow: hidden; }
+    .pw-bar { height: 100%; border-radius: 3px; transition: width .3s, background .3s; width: 0; }
+    .pw-hint { font-size: .74rem; color: #9ca3af; margin-top: 4px; }
+
+    /* ── Buttons ── */
+    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 20px; border-radius: 9px; font-size: .9rem; font-weight: 600; cursor: pointer; border: none; transition: background .2s, transform .1s; }
+    .btn:active { transform: scale(.97); }
+    .btn-primary { background: linear-gradient(135deg,#2563eb,#4f46e5); color: #fff; }
+    .btn-primary:hover { background: linear-gradient(135deg,#1d4ed8,#4338ca); }
+    .btn-danger { background: #fff; color: #dc2626; border: 1.5px solid #fca5a5; }
+    .btn-danger:hover { background: #fef2f2; }
+    .btn-sm { padding: 8px 16px; font-size: .82rem; }
+
+    /* ── Alerts ── */
+    .alert { padding: 12px 16px; border-radius: 9px; font-size: .88rem; font-weight: 500; margin-bottom: 18px; }
+    .alert-error   { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; }
+    .alert-success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #16a34a; }
+
+    /* ── Divider ── */
+    .divider { border: none; border-top: 1px solid #e5e7eb; margin: 20px 0; }
+
+    /* ── Danger zone ── */
+    .danger-section { background: #fff5f5; border: 1px solid #fecaca; border-radius: 12px; padding: 20px 24px; }
+    .danger-section h3 { color: #dc2626; font-size: .95rem; margin-bottom: 6px; }
+    .danger-section p { font-size: .82rem; color: #6b7280; margin-bottom: 14px; }
+
+    /* ── Responsive ── */
+    @media (max-width: 600px) {
+      .card { padding: 20px 16px; }
+      .page-wrap { margin: 20px auto; }
+      h1 { font-size: 1.2rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Navbar -->
+<nav class="navbar">
+  <a class="navbar-brand" href="/"><span>🤖</span> AI Job Matcher</a>
+  <div class="navbar-right">
+    <a href="/">← Back to Jobs</a>
+    <a href="/logout" style="color:#dc2626;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:4px 12px;">Sign out</a>
+  </div>
+</nav>
+
+<div class="page-wrap">
+  <h1>⚙️ Account Settings</h1>
+  <p class="subtitle">Manage your profile information and security settings.</p>
+
+  <!-- Global alerts -->
+  {% if error %}
+  <div class="alert alert-error">⚠️ {{ error }}</div>
+  {% endif %}
+  {% if success %}
+  <div class="alert alert-success">✅ {{ success }}</div>
+  {% endif %}
+
+  <!-- ── Profile Card ── -->
+  <div class="card">
+    <div class="card-title">👤 Profile Information</div>
+
+    <!-- Avatar + identity summary -->
+    <div class="avatar-row">
+      <div class="avatar">
+        {% if user.picture %}
+          <img src="{{ user.picture }}" alt="{{ user.name }}" onerror="this.parentNode.innerHTML='{{ (user.name or user.email)[0]|upper }}'">
+        {% else %}
+          {{ (user.name or user.email or '?')[0]|upper }}
+        {% endif %}
+      </div>
+      <div class="avatar-info">
+        <div class="user-name">{{ user.name or '(No name set)' }}</div>
+        <div class="user-email">{{ user.email }}</div>
+        {% if user.auth_type == 'google' %}
+        <div class="badge-sso">🔵 Google Account</div>
+        {% else %}
+        <div class="badge-sso" style="background:#f0fdf4;border-color:#86efac;color:#16a34a;">📧 Email Account</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <form method="POST" action="/account-settings">
+      <input type="hidden" name="action" value="profile">
+
+      <div class="form-group">
+        <label for="name">Full Name</label>
+        <input type="text" id="name" name="name" value="{{ user.name or '' }}"
+               placeholder="Your full name" required>
+      </div>
+
+      <div class="form-group">
+        <label for="email">Email Address</label>
+        <input type="email" id="email" value="{{ user.email }}" disabled
+               title="Email cannot be changed">
+        <div class="pw-hint">Email address cannot be changed.</div>
+      </div>
+
+      <div class="form-group">
+        <label for="phone">Phone Number <span class="optional">(optional)</span></label>
+        <input type="tel" id="phone" name="phone" value="{{ user.phone or '' }}"
+               placeholder="+91 98765 43210">
+      </div>
+
+      <button type="submit" class="btn btn-primary">💾 Save Profile</button>
+    </form>
+  </div>
+
+  <!-- ── Change Password Card ── -->
+  {% if user.auth_type != 'google' %}
+  <div class="card">
+    <div class="card-title">🔒 Change Password</div>
+    <form method="POST" action="/account-settings" id="pw-form">
+      <input type="hidden" name="action" value="password">
+
+      <div class="form-group">
+        <label for="current_password">Current Password</label>
+        <input type="password" id="current_password" name="current_password"
+               placeholder="Enter current password" required autocomplete="current-password">
+      </div>
+
+      <div class="form-group">
+        <label for="new_password">New Password</label>
+        <input type="password" id="new_password" name="new_password"
+               placeholder="Min 8 characters" required autocomplete="new-password"
+               oninput="pwStrength(this.value)">
+        <div class="pw-bar-wrap"><div class="pw-bar" id="pw-bar"></div></div>
+        <div class="pw-hint" id="pw-hint">Enter a new password</div>
+      </div>
+
+      <div class="form-group">
+        <label for="confirm_password">Confirm New Password</label>
+        <input type="password" id="confirm_password" name="confirm_password"
+               placeholder="Repeat new password" required autocomplete="new-password">
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-sm">🔑 Update Password</button>
+    </form>
+  </div>
+  {% else %}
+  <div class="card" style="opacity:.7;">
+    <div class="card-title">🔒 Change Password</div>
+    <p style="font-size:.87rem;color:#6b7280;">Password management is handled by Google for your account.</p>
+  </div>
+  {% endif %}
+
+  <!-- ── Danger Zone ── -->
+  <div class="danger-section">
+    <h3>⚠️ Sign Out</h3>
+    <p>This will end your current session.</p>
+    <a href="/logout" class="btn btn-danger btn-sm">🚪 Sign Out</a>
+  </div>
+</div>
+
+<script>
+function pwStrength(pw) {
+  const bar  = document.getElementById('pw-bar');
+  const hint = document.getElementById('pw-hint');
+  let score = 0;
+  if (pw.length >= 8)  score++;
+  if (pw.length >= 12) score++;
+  if (/[A-Z]/.test(pw)) score++;
+  if (/[0-9]/.test(pw)) score++;
+  if (/[^A-Za-z0-9]/.test(pw)) score++;
+  const levels = [
+    {w:'0%',   bg:'#e5e7eb', label:''},
+    {w:'20%',  bg:'#ef4444', label:'Very weak'},
+    {w:'40%',  bg:'#f97316', label:'Weak'},
+    {w:'60%',  bg:'#eab308', label:'Fair'},
+    {w:'80%',  bg:'#22c55e', label:'Strong'},
+    {w:'100%', bg:'#16a34a', label:'Very strong'},
+  ];
+  const l = levels[Math.min(score, 5)];
+  bar.style.width = l.w;
+  bar.style.background = l.bg;
+  hint.textContent = l.label;
+  hint.style.color = l.bg;
+}
+
+// Live confirm-password match indicator
+document.getElementById('confirm_password')?.addEventListener('input', function() {
+  const np = document.getElementById('new_password').value;
+  this.style.borderColor = this.value && this.value !== np ? '#ef4444' : '#d1d5db';
+});
+</script>
+</body>
+</html>
