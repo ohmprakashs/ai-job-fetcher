@@ -200,6 +200,7 @@ def account_settings():
             email        = request.form.get("email", "").strip().lower()
             phone        = request.form.get("phone", "").strip()
             linkedin_url = request.form.get("linkedin_url", "").strip()
+            naukri_url   = request.form.get("naukri_url", "").strip()
             if not name:
                 error = "Name cannot be empty."
             elif not email or "@" not in email:
@@ -207,7 +208,7 @@ def account_settings():
             else:
                 user_row, err = update_user_profile(
                     uid, name=name, email=email,
-                    phone=phone or None, linkedin_url=linkedin_url)
+                    phone=phone or None, linkedin_url=linkedin_url, naukri_url=naukri_url)
                 if err:
                     error = err
                 else:

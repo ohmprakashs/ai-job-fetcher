@@ -84,6 +84,7 @@ def init_db():
             auth_type TEXT DEFAULT 'email',
             google_id TEXT,
             linkedin_url TEXT,
+            naukri_url TEXT,
             created_at TEXT,
             last_login TEXT
         )
@@ -91,7 +92,7 @@ def init_db():
     # Migrate: add new columns to existing table if not present
     for col, ctype in [("phone", "TEXT"), ("password_hash", "TEXT"),
                        ("auth_type", "TEXT DEFAULT 'email'"), ("google_id", "TEXT"),
-                       ("linkedin_url", "TEXT")]:
+                       ("linkedin_url", "TEXT"), ("naukri_url", "TEXT")]:
         try:
             c.execute(f"ALTER TABLE users ADD COLUMN {col} {ctype}")
         except sqlite3.OperationalError:
@@ -175,7 +176,7 @@ def get_user_by_id(user_id):
     finally:
         conn.close()
 
-def update_user_profile(user_id, name=None, email=None, phone=None, linkedin_url=None, new_password_hash=None):
+def update_user_profile(user_id, name=None, email=None, phone=None, linkedin_url=None, naukri_url=None, new_password_hash=None):
     """Update editable profile fields. Returns (user_row, error_string)."""
     conn = get_conn()
     try:
@@ -196,6 +197,11 @@ def update_user_profile(user_id, name=None, email=None, phone=None, linkedin_url
             if url and not url.startswith("http"):
                 url = "https://" + url
             updates.append("linkedin_url=?"); params.append(url or None)
+        if naukri_url is not None:
+            url = naukri_url.strip()
+            if url and not url.startswith("http"):
+                url = "https://" + url
+            updates.append("naukri_url=?"); params.append(url or None)
         if new_password_hash is not None:
             updates.append("password_hash=?"); params.append(new_password_hash)
         if not updates:
