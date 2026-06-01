@@ -7,7 +7,8 @@ from job_db import (init_db, mark_job_applied, get_job_applications_status, get_
                     batch_update_job_skills, _extract_skills_from_text, update_job_description,
                     check_and_mark_expired_jobs, get_new_jobs_count, update_application_status,
                     mark_job_status, get_lifecycle_stats, bulk_mark_expired_from_text,
-                    verify_new_jobs_for_expiry, upsert_google_user, get_user_by_id)
+                    verify_new_jobs_for_expiry, upsert_google_user, get_user_by_id,
+                    register_user, get_user_by_email, update_last_login)
 import os
 import threading
 import time
@@ -51,20 +52,15 @@ if _SSO_ENABLED:
         def __init__(self, user_row):
             self.id = str(user_row["id"])
             self.email = user_row["email"]
-            self.name = user_row["name"]
-            self.picture = user_row["picture"]
+            self.name = user_row.get("name") or user_row["email"].split("@")[0]
+            self.picture = user_row.get("picture") or ""
+
+    _UserObj = User  # alias used in shared routes below
 
     @login_manager.user_loader
     def load_user(user_id):
         row = get_user_by_id(int(user_id))
         return User(row) if row else None
-
-    @app.route("/login")
-    def login_page():
-        if current_user.is_authenticated:
-            return redirect(url_for("index"))
-        error = request.args.get("error", "")
-        return render_template("login.html", error=error, sso_enabled=True)
 
     @app.route("/google-authorized")
     def google_authorized():
@@ -73,7 +69,7 @@ if _SSO_ENABLED:
         try:
             resp = google.get("/oauth2/v2/userinfo")
             if not resp.ok:
-                return redirect(url_for("login_page", error="Google login failed. Please try again."))
+                return redirect(url_for("login_page", error="Google login failed. Try again."))
             info = resp.json()
             user_row = upsert_google_user(
                 google_id=info["id"],
@@ -87,32 +83,118 @@ if _SSO_ENABLED:
             return redirect(url_for("login_page", error=f"Login error: {e}"))
         return redirect(url_for("index"))
 
-    @app.route("/logout")
-    def logout():
-        logout_user()
-        # Clear Flask-Dance token so re-login prompts Google again
-        if "google_oauth_token" in session:
-            del session["google_oauth_token"]
-        return redirect(url_for("login_page"))
-
 else:
-    # SSO not configured — login_required is a no-op (dev mode)
+    # SSO not configured — login_required is a no-op (dev mode), no google.login
     def login_required(f):
-        return f
-
-    class _FakeUser:
+        from functools import wraps
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            if not session.get("user_id"):
+                return redirect(url_for("login_page"))
+            return f(*args, **kwargs)
+        return decorated
+    # Stub current_user so shared routes can reference it safely
+    class _FakeCU:
         is_authenticated = False
-        name = "Guest"
+        name = ""
         email = ""
         picture = ""
+    current_user = _FakeCU()
+    class _UserObj:
+        pass
 
-    @app.route("/login")
-    def login_page():
-        return render_template("login.html", error="Google OAuth not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env", sso_enabled=False)
+# ── Login / Register / Logout routes (shared for SSO + email+pw) ────────────
+from werkzeug.security import generate_password_hash, check_password_hash
 
-    @app.route("/logout")
-    def logout():
+@app.route("/login", methods=["GET", "POST"])
+def login_page():
+    if _SSO_ENABLED and current_user.is_authenticated:
         return redirect(url_for("index"))
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
+        user_row = get_user_by_email(email)
+        if not user_row:
+            return render_template("login.html", error="No account found with this email. Please register.",
+                                   prefill_email=email, sso_enabled=_SSO_ENABLED)
+        if user_row.get("auth_type") == "google":
+            return render_template("login.html", error="This email is linked to Google Sign-In. Use the Google button below.",
+                                   prefill_email=email, sso_enabled=_SSO_ENABLED)
+        if not check_password_hash(user_row.get("password_hash", ""), password):
+            return render_template("login.html", error="Incorrect password. Please try again.",
+                                   prefill_email=email, sso_enabled=_SSO_ENABLED)
+        update_last_login(user_row["id"])
+        if _SSO_ENABLED:
+            from flask_login import login_user as _login_user
+            _login_user(_UserObj(user_row), remember=True)
+        else:
+            session["user_id"] = user_row["id"]
+        return redirect(url_for("index"))
+    error = request.args.get("error", "")
+    success = request.args.get("success", "")
+    return render_template("login.html", error=error, success=success, sso_enabled=_SSO_ENABLED)
+
+
+@app.route("/register", methods=["GET", "POST"])
+def register_page():
+    if _SSO_ENABLED and current_user.is_authenticated:
+        return redirect(url_for("index"))
+    prefill = {}
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
+        confirm = request.form.get("confirm_password", "")
+        phone = request.form.get("phone", "").strip() or None
+        prefill = {"name": name, "email": email, "phone": phone or ""}
+        if not name or not email or not password:
+            return render_template("register.html", error="Please fill in all required fields.",
+                                   prefill=prefill, sso_enabled=_SSO_ENABLED)
+        if len(password) < 8:
+            return render_template("register.html", error="Password must be at least 8 characters.",
+                                   prefill=prefill, sso_enabled=_SSO_ENABLED)
+        if password != confirm:
+            return render_template("register.html", error="Passwords do not match.",
+                                   prefill=prefill, sso_enabled=_SSO_ENABLED)
+        pw_hash = generate_password_hash(password)
+        user_row, err = register_user(name, email, pw_hash, phone)
+        if err:
+            return render_template("register.html", error=err,
+                                   prefill=prefill, sso_enabled=_SSO_ENABLED)
+        if _SSO_ENABLED:
+            from flask_login import login_user as _login_user
+            _login_user(_UserObj(user_row), remember=True)
+            return redirect(url_for("index"))
+        else:
+            session["user_id"] = user_row["id"]
+            return redirect(url_for("index"))
+    return render_template("register.html", error="", prefill=prefill, sso_enabled=_SSO_ENABLED)
+
+
+@app.route("/logout")
+def logout():
+    if _SSO_ENABLED:
+        from flask_login import logout_user as _logout_user
+        _logout_user()
+        if "google_oauth_token" in session:
+            del session["google_oauth_token"]
+    else:
+        session.pop("user_id", None)
+    return redirect(url_for("login_page"))
+
+
+# Helper: get current user for non-SSO mode
+def _get_current_user():
+    if _SSO_ENABLED:
+        return current_user
+    uid = session.get("user_id")
+    if uid:
+        row = get_user_by_id(uid)
+        if row:
+            return type("U", (), {"is_authenticated": True, "name": row.get("name",""),
+                                   "email": row.get("email",""), "picture": row.get("picture","")})()
+    return type("U", (), {"is_authenticated": False, "name": "", "email": "", "picture": ""})()
+
 
 def _startup_background_work():
     """On startup: backfill skills, fetch missing JDs, then run stale-job checker."""
@@ -285,7 +367,7 @@ def index():
         applied_count=applied_count,
         new_jobs_count=new_jobs_count,
         now_date=now_date,
-        current_user=current_user if _SSO_ENABLED else None,
+        current_user=_get_current_user(),
     )
 
 
