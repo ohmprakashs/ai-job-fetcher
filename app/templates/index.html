@@ -622,6 +622,15 @@
 
         /* Action buttons */
         .card-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+        /* Bookmark button */
+        .btn-bookmark { background: #fff; color: #64748b; border: 2px solid #cbd5e1; }
+        .btn-bookmark:hover { background: #fef9c3; border-color: #f59e0b; color: #b45309; }
+        .btn-bookmark.bookmarked { background: #fef3c7; color: #b45309; border-color: #f59e0b; }
+        /* Saved jobs panel */
+        #saved-panel { display:none; }
+        #saved-panel.active { display:block; }
+        .saved-empty { text-align:center; padding:40px 16px; color:#999; font-size:.9rem; }
+        .saved-empty .icon { font-size:2rem; margin-bottom:8px; }
         .btn {
             display: inline-flex;
             align-items: center;
@@ -1030,6 +1039,8 @@
     [data-theme="dark"] .sc-moderate { background: #431407 !important; color: #fdba74 !important; }
     [data-theme="dark"] .sc-weak     { background: #450a0a !important; color: #fca5a5 !important; }
     [data-theme="dark"] .btn-outline { background: transparent !important; color: var(--brand) !important; border-color: var(--brand) !important; }
+    [data-theme="dark"] .btn-bookmark { background: var(--bg-card) !important; border-color: #475569 !important; color: #94a3b8 !important; }
+    [data-theme="dark"] .btn-bookmark.bookmarked { background: #451a03 !important; color: #fbbf24 !important; border-color: #d97706 !important; }
     [data-theme="dark"] .btn-ghost   { background: var(--bg-hover) !important; color: var(--text-muted) !important; }
     [data-theme="dark"] #lo-badge { background: var(--lo-badge-bg) !important; border-color: var(--lo-badge-brd) !important; color: var(--lo-badge-text) !important; }
     [data-theme="dark"] .lo-spinner  { border-color: var(--border) !important; border-top-color: var(--brand) !important; }
@@ -1288,6 +1299,25 @@
     <!-- ── RESULTS ── -->
     <div class="results-area">
 
+        <!-- View tabs: Jobs / Saved -->
+        <div style="display:flex;gap:0;border-bottom:2px solid #e5e7eb;margin-bottom:16px;">
+            <button id="tab-jobs" onclick="switchTab('jobs')"
+                style="padding:9px 22px;font-size:.85rem;font-weight:700;border:none;background:none;
+                       cursor:pointer;border-bottom:3px solid #0a66c2;color:#0a66c2;margin-bottom:-2px;">
+                🗂 All Jobs
+            </button>
+            <button id="tab-saved" onclick="switchTab('saved')"
+                style="padding:9px 22px;font-size:.85rem;font-weight:600;border:none;background:none;
+                       cursor:pointer;border-bottom:3px solid transparent;color:#64748b;margin-bottom:-2px;">
+                🔖 Saved Jobs <span id="saved-badge" style="background:#f59e0b;color:#fff;border-radius:10px;
+                    padding:1px 7px;font-size:.72rem;margin-left:4px;"></span>
+            </button>
+        </div>
+
+        <!-- Saved Jobs panel -->
+        <div id="saved-panel"></div>
+
+        <div id="jobs-panel">
         {% if jobs %}
         <!-- Stats strip -->
         {% set total    = jobs|length %}
@@ -1307,6 +1337,13 @@
         </div>
 
         <!-- Results header -->
+        {% if did_submit and search_id %}
+        <div id="bg-refresh-banner" style="display:none;background:linear-gradient(135deg,#eff6ff,#dbeafe);border:1px solid #93c5fd;border-radius:8px;padding:10px 16px;margin-bottom:12px;align-items:center;gap:10px;font-size:.85rem;color:#1d4ed8;">
+            <span style="font-size:1.1rem">🔄</span>
+            <span id="bg-banner-text">Fetching fresh jobs from LinkedIn &amp; Naukri in background…</span>
+            <button onclick="location.reload()" style="margin-left:auto;padding:4px 12px;border-radius:5px;background:#1d4ed8;color:#fff;border:none;cursor:pointer;font-size:.8rem">Refresh</button>
+        </div>
+        {% endif %}
         <div class="results-header">
             <div class="results-count"><span>{{ total }}</span> jobs found</div>
             <div class="sort-info">Sorted by: Best match · Newest first</div>
@@ -1435,6 +1472,13 @@
                        title="Downloads your resume with missing JD skills added (+10–20% ATS boost)">
                         🎯 Smart CV
                     </a>
+                    <button type="button"
+                        class="btn btn-bookmark bookmark-btn {{ 'bookmarked' if job.is_bookmarked else '' }}"
+                        data-job-id="{{ job.id }}"
+                        title="{{ 'Remove bookmark' if job.is_bookmarked else 'Save for later' }}"
+                        onclick="toggleBookmark(this)">
+                        {{ '🔖 Saved' if job.is_bookmarked else '🔖 Save' }}
+                    </button>
                     {% endif %}
                 </div>
             </div>
@@ -1473,11 +1517,47 @@
         {% endif %}
 
         {% elif did_submit %}
+        {% if search_id %}
+        <!-- Jobs fetching in background — show live spinner -->
+        <div class="empty-state" id="searching-state">
+            <div class="icon">⏳</div>
+            <h3>Fetching jobs from LinkedIn &amp; Naukri…</h3>
+            <p>This takes about 30–90 seconds. The page will update automatically.</p>
+            <p style="margin-top:10px">
+                <span id="fetch-elapsed" style="font-size:.85rem;color:#888">⏳ Starting…</span>
+            </p>
+            <button onclick="location.reload()" style="margin-top:14px;padding:8px 20px;border-radius:6px;background:#0a66c2;color:#fff;border:none;cursor:pointer;font-size:.9rem">🔄 Refresh Now</button>
+        </div>
+        <script>
+        (function(){
+            var sid = {{ search_id | tojson }};
+            var elapsed = 0;
+            var elSpan = document.getElementById('fetch-elapsed');
+            var interval = setInterval(function(){
+                elapsed++;
+                if (elSpan) elSpan.textContent = '⏱ ' + elapsed + 's elapsed…';
+                fetch('/api/search-status/' + sid)
+                    .then(function(r){ return r.json(); })
+                    .then(function(d){
+                        if (d.status === 'done') {
+                            clearInterval(interval);
+                            if (elSpan) elSpan.textContent = '✅ Done! ' + (d.count||0) + ' jobs found. Refreshing…';
+                            setTimeout(function(){ location.reload(); }, 800);
+                        }
+                    })
+                    .catch(function(){});
+            }, 2000);
+            // Safety auto-refresh at 120s
+            setTimeout(function(){ clearInterval(interval); location.reload(); }, 120000);
+        })();
+        </script>
+        {% else %}
         <div class="empty-state">
             <div class="icon">🔭</div>
             <h3>No jobs found</h3>
             <p>Try broadening your filters — clear experience / posted-within, or change your skills.</p>
         </div>
+        {% endif %}
         {% else %}
         <div class="empty-state">
             <div class="icon">💼</div>
@@ -1485,6 +1565,7 @@
             <p>Upload your resume or enter skills &amp; location, then click <strong>Search Jobs</strong>.</p>
         </div>
         {% endif %}
+        </div><!-- /jobs-panel -->
 
     </div><!-- /results-area -->
 </div><!-- /page-body -->
@@ -1535,7 +1616,6 @@ function hideSearchOverlay() {
     if (!form) return;
     form.addEventListener('submit', function(){
         showSearchOverlay('Searching jobs…');
-        sessionStorage.setItem('bgFetchPending', '1');
     });
     // Hide overlay if user navigates back to page (bfcache restore)
     window.addEventListener('pageshow', function(e){
@@ -1545,14 +1625,32 @@ function hideSearchOverlay() {
 
 // Show "live jobs fetching in background" banner after search results load
 (function(){
-    var banner = document.getElementById('bg-refresh-banner');
-    if (!banner) return;
-    var pending = sessionStorage.getItem('bgFetchPending');
-    if (pending) {
-        sessionStorage.removeItem('bgFetchPending');
-        banner.style.display = 'flex';
-        setTimeout(function(){ banner.style.display = 'none'; }, 45000);
-    }
+    var searchId = {{ search_id | tojson if search_id else 'null' }};
+    if (!searchId) return;
+    var banner   = document.getElementById('bg-refresh-banner');
+    var bannerTxt = document.getElementById('bg-banner-text');
+    var searching = document.getElementById('searching-state');
+    // If there's a searching-state div, it has its own polling — skip here
+    if (searching) return;
+    if (banner) banner.style.display = 'flex';
+    var elapsed = 0;
+    var interval = setInterval(function(){
+        elapsed++;
+        fetch('/api/search-status/' + searchId)
+            .then(function(r){ return r.json(); })
+            .then(function(d){
+                if (d.status === 'done') {
+                    clearInterval(interval);
+                    if (bannerTxt) bannerTxt.textContent = '✅ Fetch complete — ' + (d.count||0) + ' new jobs. Refreshing…';
+                    setTimeout(function(){ location.reload(); }, 1200);
+                } else {
+                    if (bannerTxt) bannerTxt.textContent = '🔄 Fetching jobs… (' + elapsed*2 + 's elapsed)';
+                }
+            })
+            .catch(function(){});
+    }, 2000);
+    // Safety auto-refresh at 130s
+    setTimeout(function(){ clearInterval(interval); location.reload(); }, 130000);
 })();
 
 // ── Resume Upload ─────────────────────────────────────
@@ -1602,6 +1700,111 @@ function hideSearchOverlay() {
             });
     });
 })();
+
+// ── Bookmark Toggle ──────────────────────────────────
+function toggleBookmark(btn) {
+    var jobId = btn.getAttribute('data-job-id');
+    if (!jobId) return;
+    fetch('/api/bookmark', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({job_id: parseInt(jobId)})
+    }).then(r => r.json()).then(function(data) {
+        if (data.status === 'success') {
+            var saved = data.bookmarked;
+            btn.classList.toggle('bookmarked', saved);
+            btn.textContent = saved ? '🔖 Saved' : '🔖 Save';
+            btn.title = saved ? 'Remove bookmark' : 'Save for later';
+            toast(saved ? 'Job saved!' : 'Bookmark removed', saved ? 'success' : 'info');
+            updateSavedBadge();
+            // Refresh saved panel if it's currently visible
+            if (document.getElementById('saved-panel').style.display !== 'none') {
+                loadSavedJobs();
+            }
+        }
+    }).catch(function() { toast('Error saving bookmark', 'error'); });
+}
+
+// ── Tab Switching ─────────────────────────────────────
+function switchTab(tab) {
+    var tabJobs  = document.getElementById('tab-jobs');
+    var tabSaved = document.getElementById('tab-saved');
+    var jobsPanel  = document.getElementById('jobs-panel');
+    var savedPanel = document.getElementById('saved-panel');
+    if (tab === 'saved') {
+        tabJobs.style.borderBottomColor  = 'transparent';
+        tabJobs.style.color = '#64748b';
+        tabSaved.style.borderBottomColor = '#f59e0b';
+        tabSaved.style.color = '#b45309';
+        jobsPanel.style.display  = 'none';
+        savedPanel.style.display = 'block';
+        loadSavedJobs();
+    } else {
+        tabJobs.style.borderBottomColor  = '#0a66c2';
+        tabJobs.style.color = '#0a66c2';
+        tabSaved.style.borderBottomColor = 'transparent';
+        tabSaved.style.color = '#64748b';
+        jobsPanel.style.display  = '';
+        savedPanel.style.display = 'none';
+    }
+}
+
+function updateSavedBadge() {
+    fetch('/api/bookmarked-jobs')
+        .then(r => r.json())
+        .then(function(data) {
+            var badge = document.getElementById('saved-badge');
+            var count = (data.jobs || []).length;
+            if (badge) badge.textContent = count > 0 ? count : '';
+        });
+}
+
+function loadSavedJobs() {
+    var panel = document.getElementById('saved-panel');
+    panel.innerHTML = '<div style="padding:20px;color:#888;text-align:center;">⏳ Loading saved jobs…</div>';
+    fetch('/api/bookmarked-jobs')
+        .then(r => r.json())
+        .then(function(data) {
+            var jobs = data.jobs || [];
+            if (!jobs.length) {
+                panel.innerHTML = '<div class="saved-empty"><div class="icon">🔖</div>' +
+                    '<h3>No saved jobs yet</h3><p>Click <strong>🔖 Save</strong> on any job card to save it here.</p></div>';
+                return;
+            }
+            var html = '<div style="margin-bottom:12px;color:#64748b;font-size:.83rem;font-weight:600;">' +
+                       jobs.length + ' saved job' + (jobs.length !== 1 ? 's' : '') + '</div>';
+            jobs.forEach(function(job) {
+                var src = job.source || '';
+                var srcColor = src === 'LinkedIn' ? '#0a66c2' : '#ff6633';
+                var applyHtml = job.url ?
+                    '<a href="' + job.url + '" target="_blank" class="btn btn-primary" style="font-size:.78rem;padding:5px 12px;">Apply Now</a>' : '';
+                html += '<div class="job-card" style="margin-bottom:10px;">' +
+                    '<div class="card-top">' +
+                    '<div class="company-logo">' + (job.company ? job.company[0].toUpperCase() : '?') + '</div>' +
+                    '<div class="card-info">' +
+                    '<div class="job-title">' + (job.title || 'N/A') + '</div>' +
+                    '<div class="meta-row">' +
+                    '<span class="company-name">' + (job.company || 'N/A') + '</span>' +
+                    '<span class="meta-dot">·</span>' +
+                    '<span class="location-badge">📍 ' + (job.location || 'N/A') + '</span>' +
+                    '<span class="meta-dot">·</span>' +
+                    '<span style="color:' + srcColor + ';font-weight:700;font-size:.78rem;">' + src + '</span>' +
+                    '</div></div></div>' +
+                    '<div class="card-actions" style="margin-top:8px;">' +
+                    applyHtml +
+                    '<button type="button" class="btn btn-bookmark bookmarked" data-job-id="' + job.id + '" ' +
+                    'onclick="toggleBookmark(this)">🔖 Saved</button>' +
+                    '</div></div>';
+            });
+            panel.innerHTML = html;
+        })
+        .catch(function() {
+            panel.innerHTML = '<div class="saved-empty"><p>Failed to load saved jobs.</p></div>';
+        });
+}
+
+// Load saved badge count on page load
+document.addEventListener('DOMContentLoaded', updateSavedBadge);
 
 // ── Mark Applied ──────────────────────────────────────
 function markApplied(title, company, location, source, btn) {
@@ -1722,12 +1925,20 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
         var acList = document.getElementById(opts.listId);
         if (!wrap || !typeIn || !hidden) return;
 
+        // Use '||' as internal separator so values containing commas (e.g. "Chennai, Tamil Nadu") are safe
+        var SEP = '||';
+
         var chips = [];
 
-        // Pre-fill from server-rendered value
+        // Pre-fill from server-rendered value (may be comma-separated from old format)
         var initVal = hidden.value.trim();
         if (initVal) {
-            chips = initVal.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+            // Try new || separator first, fall back to comma for backwards compat
+            if (initVal.includes('||')) {
+                chips = initVal.split('||').map(function(s){ return s.trim(); }).filter(Boolean);
+            } else {
+                chips = initVal.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+            }
         }
 
         function renderChips() {
@@ -1738,7 +1949,7 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
                 chip.innerHTML = val + ' <span class="rm" data-i="' + i + '">\u00d7</span>';
                 chip.querySelector('.rm').addEventListener('click', function(){
                     chips.splice(parseInt(this.getAttribute('data-i')), 1);
-                    hidden.value = chips.join(', ');
+                    hidden.value = chips.join(SEP);
                     renderChips();
                 });
                 wrap.insertBefore(chip, typeIn);
@@ -1751,7 +1962,7 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
             var lower = chips.map(function(c){ return c.toLowerCase(); });
             if (!lower.includes(val.toLowerCase())) {
                 chips.push(val);
-                hidden.value = chips.join(', ');
+                hidden.value = chips.join(SEP);
                 renderChips();
             }
             typeIn.value = '';
@@ -1798,7 +2009,11 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
             var activeIdx = items.indexOf(active);
             var isOpen = acList && acList.classList.contains('open') && items.length > 0;
 
-            if (e.key === 'Enter' || e.key === ',') {
+            // Comma triggers addChip for designation/skills but NOT for location
+            // (location values contain commas e.g. "Chennai, Tamil Nadu")
+            var commaTriggersChip = !opts.noCommaTrigger;
+
+            if (e.key === 'Enter' || (e.key === ',' && commaTriggersChip)) {
                 e.preventDefault();
                 var pick = active ? active.textContent
                          : isOpen ? items[0].textContent
@@ -1813,7 +2028,7 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
 
             } else if (e.key === 'Backspace' && !typeIn.value && chips.length) {
                 chips.pop();
-                hidden.value = chips.join(', ');
+                hidden.value = chips.join(SEP);
                 renderChips();
 
             } else if (e.key === 'ArrowDown') {
@@ -1838,7 +2053,7 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
         if (opts.expose) {
             window[opts.expose] = function(arr) {
                 chips = arr.map(function(s){ return s.trim(); }).filter(Boolean);
-                hidden.value = chips.join(', ');
+                hidden.value = chips.join(SEP);
                 renderChips();
             };
         }
@@ -1872,7 +2087,8 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
             inputId:  'loc-type-input',
             hiddenId: 'location-hidden',
             listId:   'ac-location',
-            getItems: function(){ return AC.locations || []; }
+            getItems: function(){ return AC.locations || []; },
+            noCommaTrigger: true  // location values contain commas e.g. "Chennai, Tamil Nadu"
         });
     }
 

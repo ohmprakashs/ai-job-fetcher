@@ -2,7 +2,18 @@ from job_fetcher import fetch_jobs, _job_matches_experience, _job_matches_posted
 from collections import defaultdict
 from job_db import init_db, insert_jobs, get_jobs_from_db, update_job_description, verify_new_jobs_for_expiry
 import threading
-from job_db import init_db, insert_jobs, get_jobs_from_db, update_job_description
+import time
+
+# ── Global search state tracker ──────────────────────────
+# Maps search_id → {'status': 'running'|'done', 'count': N, 'started': timestamp}
+_search_state = {}
+_search_lock  = threading.Lock()
+
+
+def get_search_status(search_id):
+    with _search_lock:
+        return dict(_search_state.get(search_id, {}))
+
 
 class JobAIAgent:
     def __init__(self, skills, location="", experience_years=None, posted_within_days=None, designation=""):
@@ -14,29 +25,42 @@ class JobAIAgent:
         self.jobs = []
         self.summary = {}
 
-    def fetch_and_summarize(self, credentials=None):
-        # 1. Fire live fetch in background — do NOT block the request.
-        #    Results will be in the DB by the next search.
+    def fetch_and_summarize(self, credentials=None, search_id=None):
+        """
+        Fire a background fetch (non-blocking) so the page loads instantly.
+        The caller passes a search_id; clients poll /api/search-status/<id>
+        to know when results are ready.
+        """
         _skills = list(self.skills)
-        _desig = self.designation
-        _loc = self.location
-        _exp = self.experience_years
-        _days = self.posted_within_days
-        _creds = credentials or {}
+        _desig  = self.designation
+        _loc    = self.location
+        _exp    = self.experience_years
+        _days   = self.posted_within_days
+        _creds  = credentials or {}
+
+        if search_id:
+            with _search_lock:
+                _search_state[search_id] = {'status': 'running', 'count': 0, 'started': time.time()}
+
         def _bg_fetch():
             try:
                 live = fetch_jobs(_skills, designation=_desig, location=_loc,
                                   experience_years=_exp, posted_within_days=_days,
                                   credentials=_creds)
-                insert_jobs(live)
+                if live:
+                    insert_jobs(live)
+                count = len([j for j in live if not j.get('error')]) if live else 0
             except Exception as exc:
-                print(f"[agent] background fetch error: {exc}")
+                print(f"[agent] fetch error: {exc}")
+                count = 0
+            if search_id:
+                with _search_lock:
+                    _search_state[search_id] = {'status': 'done', 'count': count, 'started': _search_state.get(search_id, {}).get('started', 0)}
+
         threading.Thread(target=_bg_fetch, daemon=True).start()
 
-        # 2. Pull ALL known jobs from the DB immediately (fast)
+        # Return cached jobs immediately (may be empty on first run)
         all_cached_jobs = get_jobs_from_db()
-
-        # 3. Filter the cached jobs according to the current UI filters
         filtered_jobs = []
         lazy_jd_fetches = 0   # disabled — JD fetches now happen in startup background only
         _MAX_LAZY_FETCHES = 0  # set to 0 to keep request path fast
@@ -48,16 +72,29 @@ class JobAIAgent:
             # Check location
             if self.location:
                 job_loc = str(job.get("location", "")).lower()
-                search_locs = [l.strip() for l in self.location.split(",") if l.strip()]
-                
-                # Expand search locations with synonyms (e.g. Bangalore <-> Bengaluru)
-                expanded_locs = set(search_locs)
-                for loc in search_locs:
-                    if "bangalore" in loc or "bengaluru" in loc:
-                        expanded_locs.update(["bangalore", "bengaluru"])
-                        
-                # If none of the search locs are in the job location, filter it out
-                if expanded_locs and not any(l in job_loc for l in expanded_locs):
+
+                # Extract city names only (strip "State" part after comma, handle "City / City" combos)
+                def _city_only(s):
+                    s = s.strip().lower()
+                    if "," in s:
+                        s = s.rsplit(",", 1)[0].strip()
+                    return s
+
+                # Support multiple locations separated by semicolon (e.g. "Chennai, TN; Mumbai, MH")
+                raw_locs = [l.strip() for l in self.location.replace(";", ",").split(",") if l.strip()]
+                # Rebuild: treat "City, State" as a single entry by re-joining pairs
+                # self.location is a single entry like "Chennai, Tamil Nadu"
+                # so just extract city from the whole string
+                city = _city_only(self.location)
+                expanded_locs = {city}
+                # Handle "City / City" combos (e.g. "Bangalore / Bengaluru")
+                for part in city.split("/"):
+                    expanded_locs.add(part.strip())
+                # Always expand Bangalore ↔ Bengaluru
+                if "bangalore" in city or "bengaluru" in city:
+                    expanded_locs.update(["bangalore", "bengaluru"])
+
+                if expanded_locs and not any(l and l in job_loc for l in expanded_locs):
                     continue
                 
             # Let the advanced scoring logic handle skill matching later.
@@ -120,7 +157,9 @@ class JobAIAgent:
                         and job.get("url") and title_has_designation):
                     try:
                         from jd_scraper import scrape_jd_text
-                        fetched = scrape_jd_text(job["url"], "linkedin") or ""
+                        result = scrape_jd_text(job["url"], "linkedin")
+                        # scrape_jd_text returns (text, is_expired) tuple
+                        fetched = result[0] if isinstance(result, tuple) else (result or "")
                         if fetched:
                             job_description = fetched
                             if job.get("id"):

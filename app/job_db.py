@@ -59,7 +59,8 @@ def init_db():
                        ("status", "TEXT DEFAULT 'active'"),
                        ("first_seen_at", "TEXT"),
                        ("last_checked_at", "TEXT"),
-                       ("application_status", "TEXT DEFAULT 'not_applied'")]:
+                       ("application_status", "TEXT DEFAULT 'not_applied'"),
+                       ("is_bookmarked", "INTEGER DEFAULT 0")]:
         try:
             c.execute(f"ALTER TABLE jobs ADD COLUMN {col} {ctype}")
         except sqlite3.OperationalError:
@@ -559,6 +560,53 @@ def update_application_status(job_id: int, application_status: str):
         conn.commit()
     finally:
         conn.close()
+
+
+def toggle_bookmark(job_id: int) -> bool:
+    """Toggle is_bookmarked for a job. Returns new bookmark state (True = bookmarked)."""
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT is_bookmarked FROM jobs WHERE id=?", (job_id,)).fetchone()
+        if row is None:
+            return False
+        new_val = 0 if row[0] else 1
+        conn.execute("UPDATE jobs SET is_bookmarked=? WHERE id=?", (new_val, job_id))
+        conn.commit()
+        return bool(new_val)
+    finally:
+        conn.close()
+
+
+def get_bookmarked_jobs() -> list:
+    """Return all bookmarked jobs ordered by most recently fetched."""
+    conn = get_conn()
+    try:
+        rows = conn.execute("""
+            SELECT id, title, company, location, url, source, skills, apply_type,
+                   experience_min, experience_max, posted_days_ago, posted_date,
+                   is_applied, application_status, status, is_bookmarked, description, snippet
+            FROM jobs
+            WHERE is_bookmarked = 1
+            ORDER BY fetched_at DESC
+        """).fetchall()
+        cols = ["id", "title", "company", "location", "url", "source", "skills",
+                "apply_type", "experience_min", "experience_max", "posted_days_ago",
+                "posted_date", "is_applied", "application_status", "status",
+                "is_bookmarked", "description", "snippet"]
+        result = []
+        for row in rows:
+            job = dict(zip(cols, row))
+            if isinstance(job.get("skills"), str):
+                try:
+                    import json
+                    job["skills"] = json.loads(job["skills"])
+                except Exception:
+                    job["skills"] = []
+            result.append(job)
+        return result
+    finally:
+        conn.close()
+
 
 
 def get_new_jobs_count(hours: int = 24) -> int:

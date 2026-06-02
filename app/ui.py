@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify, session
-from job_agent import JobAIAgent
+from job_agent import JobAIAgent, get_search_status
 from job_fetcher import find_common_jobs
 from job_db import (init_db, mark_job_applied, get_job_applications_status, get_job_by_id,
                     get_applied_count, get_applied_jobs, get_daily_applied_stats,
@@ -9,7 +9,7 @@ from job_db import (init_db, mark_job_applied, get_job_applications_status, get_
                     mark_job_status, get_lifecycle_stats, bulk_mark_expired_from_text,
                     verify_new_jobs_for_expiry, upsert_google_user, get_user_by_id,
                     register_user, get_user_by_email, update_last_login, update_user_profile,
-                    _decode_cred)
+                    _decode_cred, toggle_bookmark, get_bookmarked_jobs)
 import os
 import threading
 import time
@@ -295,7 +295,6 @@ def _startup_background_work():
                     mark_job_status(job["id"], "expired")
                     continue
                 jd_text = jd_text or ""
-                jd_text = scrape_jd_text(job["url"], job["source"].lower()) or ""
                 if jd_text and len(jd_text) > 100:
                     extracted = _extract_skills_from_text(jd_text)
                     skills_str = ",".join(sorted(set(extracted))) if extracted else ""
@@ -379,15 +378,21 @@ def index():
     experience_years = None
     posted_within_days = None
     did_submit = False
+    search_id = None
+
     if request.method == 'POST':
         did_submit = True
 
-        # Skills come from the form field (already pre-filled by AJAX /upload-resume)
-        skills = [s.strip().lower() for s in request.form.get('skills', '').split(',') if s.strip()]
+        # Chips use '||' as separator to safely handle values with commas (e.g. "Chennai, Tamil Nadu")
+        raw_skills = request.form.get('skills', '')
+        skills = [s.strip().lower() for s in raw_skills.replace('||', ',').split(',') if s.strip()]
 
+        raw_location = request.form.get('location', '').strip()
+        location_filter = raw_location.split('||')[0].strip() if raw_location else ''
 
-        location_filter = request.form.get('location', '').strip().lower()
-        designation_filter = request.form.get('designation', '').strip().lower()
+        raw_desig = request.form.get('designation', '').strip()
+        designation_filter = raw_desig.replace('||', ',').strip().lower()
+
         years_raw = (request.form.get('years') or '').strip()
         if years_raw:
             try:
@@ -402,6 +407,11 @@ def index():
             except ValueError:
                 posted_within_days = None
 
+        # Generate a unique search_id for this request so JS can poll status
+        import uuid
+        search_id = str(uuid.uuid4())
+        session['last_search_id'] = search_id
+
         agent = JobAIAgent(
             skills,
             location=location_filter,
@@ -411,13 +421,15 @@ def index():
         )
         # Pass stored social credentials so fetcher auto-logs in
         _cu_row = get_user_by_id(session.get("user_id") or 0) or {}
-        agent.fetch_and_summarize(credentials={
-            "linkedin_email":    _cu_row.get("linkedin_email") or "",
-            "linkedin_password": _decode_cred(_cu_row.get("linkedin_password") or ""),
-            "naukri_email":      _cu_row.get("naukri_email") or "",
-            "naukri_password":   _decode_cred(_cu_row.get("naukri_password") or ""),
-        })
-        agent.fetch_and_summarize()
+        agent.fetch_and_summarize(
+            search_id=search_id,
+            credentials={
+                "linkedin_email":    _cu_row.get("linkedin_email") or "",
+                "linkedin_password": _decode_cred(_cu_row.get("linkedin_password") or ""),
+                "naukri_email":      _cu_row.get("naukri_email") or "",
+                "naukri_password":   _decode_cred(_cu_row.get("naukri_password") or ""),
+            }
+        )
         jobs = agent.get_jobs()
         
         # Removed the strict local text fallback filter.
@@ -457,6 +469,7 @@ def index():
         new_jobs_count=new_jobs_count,
         now_date=now_date,
         current_user=_get_current_user(),
+        search_id=search_id,
     )
 
 
@@ -474,6 +487,21 @@ def apply_job_async():
         applied_count = get_applied_count()
         return {"status": "success", "applied_count": applied_count}
     return {"status": "error"}, 400
+
+
+@app.route('/api/search-status/<search_id>')
+@login_required
+def api_search_status(search_id):
+    """Poll endpoint: returns {status, count, elapsed} for a background fetch."""
+    state = get_search_status(search_id)
+    if not state:
+        return jsonify({"status": "unknown"})
+    elapsed = round(time.time() - state.get('started', time.time()), 1)
+    return jsonify({
+        "status":  state.get('status', 'running'),
+        "count":   state.get('count', 0),
+        "elapsed": elapsed,
+    })
 
 
 @app.route('/api/update-application-status', methods=['POST'])
@@ -502,6 +530,28 @@ def api_mark_job_status():
     init_db()
     mark_job_status(int(job_id), status)
     return jsonify({"status": "success"})
+
+
+@app.route('/api/bookmark', methods=['POST'])
+def api_bookmark():
+    """Toggle bookmark state for a job. Returns new bookmarked state."""
+    data = request.get_json() or {}
+    job_id = data.get('job_id')
+    if not job_id:
+        return jsonify({"status": "error", "message": "job_id required"}), 400
+    init_db()
+    new_state = toggle_bookmark(int(job_id))
+    return jsonify({"status": "success", "bookmarked": new_state})
+
+
+@app.route('/api/bookmarked-jobs')
+def api_bookmarked_jobs():
+    """Return all bookmarked jobs as JSON for the sidebar panel."""
+    init_db()
+    jobs = get_bookmarked_jobs()
+    return jsonify({"jobs": jobs})
+
+
 
 
 @app.route('/api/lifecycle-stats')
@@ -802,7 +852,6 @@ def ai_match(job_id):
             pass
     if not jd_text:
         jd_text = (job.get("snippet") or "").strip()
-    jd_text = scrape_jd_text(job.get("url", ""), job.get("source", ""))
     report = generate_ai_match_report(resume_path, job, jd_text)
     return jsonify({"status": "success", "report": report})
 
@@ -828,7 +877,6 @@ def ats_scorecard(job_id):
     if not jd_text:
         jd_text = (job.get("snippet") or "").strip()
 
-    jd_text = scrape_jd_text(job.get("url", ""), job.get("source", ""))
     scorecard = generate_ats_scorecard(resume_path, job, jd_text)
     if "error" in scorecard:
         return jsonify({"status": "error", "message": scorecard["error"]}), 400
@@ -861,7 +909,6 @@ def smart_tailor_cv(job_id):
             pass
     if not jd_text:
         jd_text = (job.get("snippet") or "").strip()
-    jd_text = scrape_jd_text(job.get("url", ""), job.get("source", ""))
 
     try:
         result = tailor_cv_smart(base_pdf_path, job, output_pdf_path, jd_text)
@@ -1024,13 +1071,93 @@ def autocomplete():
     ])
 
     LOCATIONS = sorted([
-        "Bangalore", "Bengaluru", "Mumbai", "Pune", "Hyderabad", "Chennai",
-        "Delhi", "Noida", "Gurgaon", "Kolkata", "Ahmedabad", "Jaipur",
-        "Chandigarh", "Kochi", "Coimbatore", "Indore", "Bhubaneswar",
-        "Remote", "Hybrid", "Pan India",
-        # Global
-        "New York", "San Francisco", "Seattle", "Austin", "London",
-        "Singapore", "Dubai", "Toronto", "Berlin",
+        # ── Karnataka ──
+        "Bangalore / Bengaluru, Karnataka",
+        "Mysuru, Karnataka",
+        "Mangaluru, Karnataka",
+        "Hubli, Karnataka",
+        "Belagavi, Karnataka",
+        # ── Tamil Nadu ──
+        "Chennai, Tamil Nadu",
+        "Coimbatore, Tamil Nadu",
+        "Madurai, Tamil Nadu",
+        "Tiruchirappalli, Tamil Nadu",
+        "Salem, Tamil Nadu",
+        "Tirunelveli, Tamil Nadu",
+        "Vellore, Tamil Nadu",
+        "Erode, Tamil Nadu",
+        # ── Maharashtra ──
+        "Mumbai, Maharashtra",
+        "Pune, Maharashtra",
+        "Nagpur, Maharashtra",
+        "Nashik, Maharashtra",
+        "Aurangabad, Maharashtra",
+        "Thane, Maharashtra",
+        # ── Telangana ──
+        "Hyderabad, Telangana",
+        "Secunderabad, Telangana",
+        "Warangal, Telangana",
+        # ── Andhra Pradesh ──
+        "Visakhapatnam, Andhra Pradesh",
+        "Vijayawada, Andhra Pradesh",
+        "Guntur, Andhra Pradesh",
+        "Tirupati, Andhra Pradesh",
+        # ── Delhi NCR ──
+        "New Delhi, Delhi",
+        "Noida, Uttar Pradesh",
+        "Gurgaon, Haryana",
+        "Faridabad, Haryana",
+        "Ghaziabad, Uttar Pradesh",
+        # ── Uttar Pradesh ──
+        "Lucknow, Uttar Pradesh",
+        "Kanpur, Uttar Pradesh",
+        "Agra, Uttar Pradesh",
+        "Varanasi, Uttar Pradesh",
+        # ── West Bengal ──
+        "Kolkata, West Bengal",
+        # ── Gujarat ──
+        "Ahmedabad, Gujarat",
+        "Surat, Gujarat",
+        "Vadodara, Gujarat",
+        "Rajkot, Gujarat",
+        # ── Rajasthan ──
+        "Jaipur, Rajasthan",
+        "Jodhpur, Rajasthan",
+        "Udaipur, Rajasthan",
+        # ── Madhya Pradesh ──
+        "Indore, Madhya Pradesh",
+        "Bhopal, Madhya Pradesh",
+        # ── Punjab & Haryana ──
+        "Chandigarh, Punjab",
+        "Ludhiana, Punjab",
+        "Amritsar, Punjab",
+        # ── Kerala ──
+        "Kochi, Kerala",
+        "Thiruvananthapuram, Kerala",
+        "Kozhikode, Kerala",
+        "Thrissur, Kerala",
+        # ── Odisha ──
+        "Bhubaneswar, Odisha",
+        "Cuttack, Odisha",
+        # ── Jharkhand & Bihar ──
+        "Ranchi, Jharkhand",
+        "Patna, Bihar",
+        # ── North East ──
+        "Guwahati, Assam",
+        # ── Other ──
+        "Remote",
+        "Hybrid",
+        "Pan India",
+        # ── Global ──
+        "New York, USA",
+        "San Francisco, USA",
+        "Seattle, USA",
+        "Austin, USA",
+        "London, UK",
+        "Singapore",
+        "Dubai, UAE",
+        "Toronto, Canada",
+        "Berlin, Germany",
     ])
 
     # ── Augment with DB data ─────────────────────────────────────────────────
@@ -1047,6 +1174,8 @@ def autocomplete():
         ).fetchall()
 
         # Expand multi-city strings (e.g. "Pune, Bengaluru, Delhi / NCR") into individual cities
+        # Also normalise Bangalore / Bengaluru variants to the combined label
+        _BLORE_VARIANTS = {"bangalore", "bengaluru", "bangalore/bengaluru", "bengaluru/bangalore"}
         db_loc_freq = {}   # city -> total job count
         for raw_loc, cnt in db_loc_rows:
             raw_loc = raw_loc.strip()
@@ -1055,6 +1184,9 @@ def autocomplete():
             for part in parts:
                 part = part.strip()
                 if part and len(part) < 60 and len(part) > 2:
+                    # Normalise Bangalore/Bengaluru variants to combined label
+                    if part.lower().replace(" ", "") in _BLORE_VARIANTS or part.lower() in _BLORE_VARIANTS:
+                        part = "Bangalore / Bengaluru"
                     db_loc_freq[part] = db_loc_freq.get(part, 0) + cnt
 
         # Sort by frequency descending
@@ -1092,6 +1224,9 @@ def autocomplete():
     locs_seen = {l.lower() for l in LOCATIONS}
     merged_locs = list(LOCATIONS)
     for l in db_locs:
+        # Normalise Bangalore/Bengaluru from DB
+        if l.lower().replace(" ", "") in {"bangalore", "bengaluru", "bangalore/bengaluru"}:
+            l = "Bangalore / Bengaluru"
         if l.lower() not in locs_seen:
             merged_locs.append(l)
             locs_seen.add(l.lower())
