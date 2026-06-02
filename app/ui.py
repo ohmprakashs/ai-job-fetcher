@@ -1,5 +1,4 @@
 from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify, session
-from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify
 from job_agent import JobAIAgent
 from job_fetcher import find_common_jobs
 from job_db import (init_db, mark_job_applied, get_job_applications_status, get_job_by_id,
@@ -11,7 +10,6 @@ from job_db import (init_db, mark_job_applied, get_job_applications_status, get_
                     verify_new_jobs_for_expiry, upsert_google_user, get_user_by_id,
                     register_user, get_user_by_email, update_last_login, update_user_profile,
                     _decode_cred)
-                    mark_job_status, get_lifecycle_stats)
 import os
 import threading
 import time
