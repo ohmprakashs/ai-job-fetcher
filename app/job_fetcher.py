@@ -591,13 +591,6 @@ def fetch_jobs(
                 jobs.extend(results)
         except Exception as e:
             with jobs_lock:
-    for loc in locations:
-        for skill_pair in skill_pairs:
-            pair_list = [s.strip() for s in skill_pair.split() if s.strip()]
-
-            try:
-                jobs.extend(fetch_linkedin_jobs(pair_list, loc, designation))
-            except Exception as e:
                 jobs.append({
                     "title": "LinkedIn fetch error", "company": "", "location": loc,
                     "skills": [], "url": "", "error": str(e), "source": "LinkedIn"
@@ -611,9 +604,6 @@ def fetch_jobs(
                 jobs.extend(results)
         except Exception as e:
             with jobs_lock:
-            try:
-                jobs.extend(fetch_naukri_jobs_playwright(pair_list, loc, designation))
-            except Exception as e:
                 jobs.append({
                     "title": "Naukri fetch error", "company": "", "location": loc,
                     "skills": [], "url": "", "error": str(e), "source": "Naukri",
