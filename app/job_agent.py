@@ -2,6 +2,7 @@ from job_fetcher import fetch_jobs, _job_matches_experience, _job_matches_posted
 from collections import defaultdict
 from job_db import init_db, insert_jobs, get_jobs_from_db, update_job_description, verify_new_jobs_for_expiry
 import threading
+from job_db import init_db, insert_jobs, get_jobs_from_db, update_job_description
 
 class JobAIAgent:
     def __init__(self, skills, location="", experience_years=None, posted_within_days=None, designation=""):
@@ -115,6 +116,17 @@ class JobAIAgent:
                 )
                 # Lazy JD fetch disabled in request path — handled by startup background thread.
                 # (Keeping lazy_jd_fetches variable for future use but _MAX_LAZY_FETCHES=0 disables it)
+                if (not job_description and job_source == "linkedin"
+                        and job.get("url") and title_has_designation):
+                    try:
+                        from jd_scraper import scrape_jd_text
+                        fetched = scrape_jd_text(job["url"], "linkedin") or ""
+                        if fetched:
+                            job_description = fetched
+                            if job.get("id"):
+                                update_job_description(job["id"], fetched)
+                    except Exception:
+                        pass
 
                 # ── Detect "mirror skills": LinkedIn stores our own search
                 # keywords that happened to appear in the card title.

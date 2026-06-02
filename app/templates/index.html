@@ -168,6 +168,106 @@
         .sb-btn {
             background: #0a66c2;
             color: #fff;
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin-bottom: 2px;
+        }
+        .hero p { color: rgba(255,255,255,.75); font-size: .8rem; margin-bottom: 10px; }
+
+        .search-bar {
+            display: flex;
+            gap: 0;
+            background: #fff;
+            border-radius: 6px;
+            overflow: visible;        /* must NOT be hidden — clips autocomplete dropdowns */
+            box-shadow: 0 2px 12px rgba(0,0,0,.18);
+            /* keep rounded corners via outline clip on the box itself */
+            clip-path: none;
+        }
+        /* Apply border-radius to first/last children instead of overflow:hidden on parent */
+        .search-bar .sb-field:first-child  { border-radius: 6px 0 0 6px; overflow: visible; }
+        .search-bar .sb-btn                { border-radius: 0 6px 6px 0; }
+        .search-bar .sb-field {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 0 16px;
+            border-right: 1px solid #e0e0e0;
+        }
+        .search-bar .sb-field:last-of-type { border-right: none; }
+        .search-bar .sb-field svg { flex-shrink: 0; color: #666; }
+        .search-bar input {
+            border: none;
+            outline: none;
+            font-family: inherit;
+            font-size: .9rem;
+            color: #1a1a1a;
+            width: 100%;
+            padding: 13px 0;
+            background: transparent;
+        }
+        .search-bar input::placeholder { color: #999; }
+
+        /* ─── AUTOCOMPLETE DROPDOWN ──────────────────── */
+        .ac-wrap { position: relative; flex: 1; display: flex; align-items: center; }
+        .ac-wrap input { width: 100%; }
+        .ac-list {
+            position: fixed;          /* fixed escapes ALL overflow:hidden ancestors */
+            background: #fff;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            box-shadow: 0 8px 24px rgba(0,0,0,.18);
+            max-height: 240px;
+            overflow-y: auto;
+            z-index: 9999;
+            display: none;
+            min-width: 220px;
+        }
+        .ac-list.open { display: block; }
+        .ac-item {
+            padding: 9px 16px;
+            font-size: .875rem;
+            color: #1a1a1a;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .ac-item:hover, .ac-item.active { background: #f0f7ff; color: #0a66c2; }
+        .ac-item mark { background: none; color: #0a66c2; font-weight: 700; }
+        /* skill tag chips inside the skills input wrap */
+        .skill-tags-wrap {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 4px;
+            flex: 2;
+            padding: 6px 0;
+            min-width: 0;
+        }
+        .skill-tag-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: #e8f3ff;
+            color: #0a66c2;
+            border-radius: 20px;
+            padding: 3px 10px 3px 10px;
+            font-size: .78rem;
+            font-weight: 600;
+            white-space: nowrap;
+            cursor: default;
+        }
+        .skill-tag-chip .rm { cursor: pointer; font-size: .85rem; opacity: .7; margin-left: 2px; }
+        .skill-tag-chip .rm:hover { opacity: 1; }
+        #skill-type-input {
+            border: none; outline: none; font-family: inherit; font-size: .9rem;
+            color: #1a1a1a; background: transparent; min-width: 120px; padding: 4px 0;
+        }
+        .sb-btn {
+            background: #0a66c2;
+            color: #fff;
             border: none;
             padding: 0 28px;
             font-family: inherit;
@@ -832,6 +932,93 @@
   <span style="animation:spin 1s linear infinite;display:inline-block">🔄</span>
   <span>Fetching live jobs in background…</span>
 </div>
+        }
+        .sc-strong   { background: #dcfce7; color: #166534; }
+        .sc-moderate { background: #fff7ed; color: #9a3412; }
+        .sc-weak     { background: #fff1f2; color: #9f1239; }
+
+        .sc-bars { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+        .sc-bar-row { display: grid; grid-template-columns: 130px 1fr 38px; align-items: center; gap: 10px; }
+        .sc-bar-lbl { font-size: .8rem; color: #555; font-weight: 500; }
+        .sc-track { height: 7px; background: #e5e7eb; border-radius: 10px; overflow: hidden; }
+        .sc-fill  { height: 7px; border-radius: 10px; transition: width .6s ease; }
+        .sc-pct   { font-size: .8rem; font-weight: 700; text-align: right; }
+        .fill-high   { background: linear-gradient(90deg,#16a34a,#22c55e); }
+        .fill-medium { background: linear-gradient(90deg,#ea580c,#fb923c); }
+        .fill-low    { background: linear-gradient(90deg,#dc2626,#f87171); }
+
+        .sc-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 12px; }
+        .sc-recs { border-top: 1px solid #e5e7eb; padding-top: 10px; }
+        .sc-recs h5 { font-size: .78rem; font-weight: 700; color: #444; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
+        .sc-rec { font-size: .8rem; color: #555; padding: 4px 0; display: flex; gap: 6px; }
+        .sc-rec::before { content: '›'; color: #0a66c2; font-weight: 700; }
+
+        /* ─── COMMON JOBS ──────────────────────────────── */
+        .common-section { margin-top: 8px; }
+        .section-heading {
+            font-size: .82rem;
+            font-weight: 700;
+            color: #777;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            padding: 12px 0 8px;
+            border-top: 1px solid #e0e0e0;
+            margin-top: 8px;
+        }
+        .common-card {
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: .85rem;
+        }
+        .common-card strong { color: #1a1a1a; }
+        .common-card span   { color: #777; }
+
+        /* ─── EMPTY STATE ──────────────────────────────── */
+        .empty-state {
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 56px 20px;
+            text-align: center;
+            color: #999;
+        }
+        .empty-state .icon { font-size: 2.5rem; margin-bottom: 12px; }
+        .empty-state h3 { font-size: 1rem; font-weight: 700; color: #555; margin-bottom: 6px; }
+
+        /* ─── TOAST ────────────────────────────────────── */
+        #toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; }
+        .toast {
+            background: #1e293b; color: #f1f5f9;
+            padding: 11px 18px; border-radius: 8px;
+            font-size: .85rem; font-weight: 500;
+            box-shadow: 0 4px 20px rgba(0,0,0,.25);
+            display: flex; align-items: center; gap: 8px;
+            animation: slideIn .25s ease;
+            min-width: 240px;
+        }
+        .toast.hide { animation: slideOut .25s ease forwards; }
+        @keyframes slideIn { from {opacity:0;transform:translateX(30px)} to {opacity:1;transform:translateX(0)} }
+        @keyframes slideOut { to {opacity:0;transform:translateX(30px)} }
+
+        /* ─── RESPONSIVE ───────────────────────────────── */
+        @media(max-width: 860px) {
+            .page-body { grid-template-columns: 1fr; }
+            .sidebar { position: static; height: auto; max-height: 300px; }
+            .stats-strip { grid-template-columns: repeat(2,1fr); }
+            .search-bar { flex-direction: column; }
+            .search-bar .sb-field { border-right: none; border-bottom: 1px solid #e0e0e0; }
+            .sb-btn { justify-content: center; padding: 14px; }
+        }
+    </style>
+</head>
+<body>
+<div id="toast-container"></div>
 <!-- Autocomplete dropdowns — placed at body root to escape all overflow:hidden -->
 <ul class="ac-list" id="ac-designation"></ul>
 <ul class="ac-list" id="ac-location"></ul>
@@ -842,6 +1029,7 @@
     <div class="navbar-inner">
         <div class="brand">🤖 AI Job<span> Matcher</span></div>
         <div style="margin-left:auto;display:flex;gap:16px;align-items:center;flex-wrap:wrap;">
+        <div style="margin-left:auto;display:flex;gap:16px;align-items:center;">
             <!-- 🔔 New jobs notification bell -->
             {% if new_jobs_count and new_jobs_count > 0 %}
             <span id="new-jobs-bell" title="New jobs added in last 24h"
@@ -957,6 +1145,7 @@
         ⚙️ Filters
     </button>
     <aside class="sidebar mobile-collapsed" id="filter-sidebar">
+    <aside class="sidebar">
         <div class="sidebar-header">
             Filters
             <a onclick="document.querySelector('#main-form').reset();">Clear all</a>
@@ -1057,6 +1246,56 @@
                         </span>
                         {% endif %}
 
+
+        <!-- Job cards -->
+        {% for job in jobs %}
+        {% set score = job.match_score %}
+        {% set score_cls = 'high' if score >= 75 else ('medium' if score >= 50 else 'low') %}
+        <div class="job-card {{ 'applied' if job.is_applied else '' }} {{ 'expired-card' if job.status == 'expired' else '' }}">
+            {% if job.status == 'expired' %}
+            <div style="background:#fee2e2;color:#991b1b;font-size:.72rem;font-weight:700;
+                        padding:4px 14px;letter-spacing:.04em;text-transform:uppercase;">
+                ⚠️ This job may no longer be accepting applications
+            </div>
+            {% endif %}
+            <div class="card-top">
+                <!-- Company logo placeholder -->
+                <div class="company-logo">
+                    {{ job.company[0] if job.company and job.company != 'N/A' else '?' }}
+                </div>
+
+                <div class="card-info">
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                        <div class="job-title"
+                            {% if job.url %}onclick="window.open('{{ job.url }}','_blank')"{% endif %}>
+                            {{ job.title }}
+                        </div>
+                        {% if job.first_seen_at and job.first_seen_at[:10] >= (now_date | default('2000-01-01')) %}
+                        <span style="background:#e0f2fe;color:#0369a1;font-size:.68rem;font-weight:800;
+                                     padding:1px 8px;border-radius:20px;letter-spacing:.03em;">🆕 NEW</span>
+                        {% endif %}
+                    </div>
+                    <div class="job-company">{{ job.company }}</div>
+
+                    <div class="job-meta-row">
+                        {% if job.location and job.location != 'N/A' %}
+                        <span>
+                            <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+                            {{ job.location }}
+                        </span>
+                        {% endif %}
+
+                        {% if job.experience_min is not none %}
+                        <span>
+                            <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 3l-4 4-4-4"/></svg>
+                            {% if job.experience_max is not none and job.experience_min != job.experience_max %}
+                                {{ job.experience_min }}–{{ job.experience_max }} Yrs
+                            {% else %}
+                                {{ job.experience_min }} Yrs
+                            {% endif %}
+                        </span>
+                        {% endif %}
+
                         {% if job.posted_days_ago is not none %}
                         <span>
                             <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
@@ -1113,6 +1352,7 @@
                        data-url="{{ job.url }}"
                        data-job-id="{{ job.id }}"
                        onclick="validateAndApply(event, this)">Apply Now</a>
+                    <a href="{{ job.url }}" target="_blank" class="btn btn-primary">Apply Now</a>
                     {% endif %}
 
                     <button type="button"
@@ -1486,6 +1726,48 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
         if (!wrap || !typeIn || !hidden) return;
 
         var chips = [];
+                }
+                li.addEventListener('mousedown', function(e){
+                    e.preventDefault();
+                    input.value = item;
+                    list.classList.remove('open');
+                });
+                list.appendChild(li);
+            });
+            positionList(input, list);
+            list.classList.add('open');
+        }
+
+        input.addEventListener('input', function(){ show(getItems()); });
+        input.addEventListener('focus', function(){ show(getItems()); });   // always show on focus
+        input.addEventListener('blur',  function(){ setTimeout(function(){ list.classList.remove('open'); }, 150); });
+        input.addEventListener('keydown', function(e) {
+            var items = list.querySelectorAll('.ac-item');
+            if (e.key === 'ArrowDown') { active = Math.min(active+1, items.length-1); }
+            else if (e.key === 'ArrowUp') { active = Math.max(active-1, 0); }
+            else if (e.key === 'Enter' && active >= 0) {
+                e.preventDefault();
+                input.value = items[active].textContent;
+                list.classList.remove('open'); active = -1;
+            } else if (e.key === 'Escape') { list.classList.remove('open'); }
+            items.forEach(function(it, i){ it.classList.toggle('active', i===active); });
+        });
+    }
+
+    // designation, location, skills all use chip inputs below
+
+    // ── Designation tag-chip input ────────────────────────
+    var _desigChipsInit = false;
+    function initDesignationChips() {
+        if (_desigChipsInit) return;
+        _desigChipsInit = true;
+        var wrap   = document.getElementById('desig-tags-wrap');
+        var typeIn = document.getElementById('desig-type-input');
+        var hidden = document.getElementById('designation-hidden');
+        var acList = document.getElementById('ac-designation');
+        if (!wrap || !typeIn || !hidden) return;
+
+        var chips = [];
         var initVal = hidden.value.trim();
         if (initVal) {
             chips = initVal.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
@@ -1497,6 +1779,225 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
                 var chip = document.createElement('span');
                 chip.className = 'skill-tag-chip';
                 chip.innerHTML = d + ' <span class="rm" data-i="' + i + '">×</span>';
+                chip.querySelector('.rm').addEventListener('click', function(){
+                    chips.splice(parseInt(this.getAttribute('data-i')), 1);
+                    hidden.value = chips.join(', ');
+                    renderChips();
+                });
+                wrap.insertBefore(chip, typeIn);
+            });
+        }
+
+        function addDesignation(d) {
+            d = d.trim();
+            if (!d) return;
+            if (!chips.map(function(c){ return c.toLowerCase(); }).includes(d.toLowerCase())) {
+                chips.push(d);
+                hidden.value = chips.join(', ');
+                renderChips();
+            }
+            typeIn.value = '';
+            if (acList) acList.classList.remove('open');
+        }
+
+        function showDesigAC() {
+            if (!acList) return;
+            var q = typeIn.value.trim().toLowerCase();
+            acList.innerHTML = '';
+            var allDesigs = AC.designations || [];
+            var added = chips.map(function(c){ return c.toLowerCase(); });
+            var filtered = q
+                ? allDesigs.filter(function(s){ return s.toLowerCase().includes(q) && !added.includes(s.toLowerCase()); }).slice(0, 10)
+                : allDesigs.filter(function(s){ return !added.includes(s.toLowerCase()); }).slice(0, 8);
+            if (!filtered.length) { acList.classList.remove('open'); return; }
+            filtered.forEach(function(item) {
+                var li = document.createElement('li');
+                li.className = 'ac-item';
+                if (q) {
+                    var idx = item.toLowerCase().indexOf(q);
+                    li.innerHTML = item.slice(0,idx) + '<mark>' + item.slice(idx,idx+q.length) + '</mark>' + item.slice(idx+q.length);
+                } else {
+                    li.textContent = item;
+                }
+                li.addEventListener('mousedown', function(e){ e.preventDefault(); addDesignation(item); });
+                acList.appendChild(li);
+            });
+            positionList(typeIn, acList);
+            acList.classList.add('open');
+        }
+
+        typeIn.addEventListener('input', showDesigAC);
+        typeIn.addEventListener('focus', showDesigAC);
+        typeIn.addEventListener('blur',  function(){ setTimeout(function(){ if (acList) acList.classList.remove('open'); }, 150); });
+        typeIn.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ',') {
+                e.preventDefault();
+                var v = typeIn.value.replace(',','').trim();
+                if (v) addDesignation(v);
+            } else if (e.key === 'Backspace' && !typeIn.value && chips.length) {
+                chips.pop(); hidden.value = chips.join(', '); renderChips();
+            } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                var items = acList ? acList.querySelectorAll('.ac-item') : [];
+                var cur   = acList ? acList.querySelector('.active') : null;
+                var idx   = Array.from(items).indexOf(cur);
+                if (e.key === 'ArrowDown') idx = Math.min(idx+1, items.length-1);
+                else idx = Math.max(idx-1, 0);
+                items.forEach(function(it,i){ it.classList.toggle('active', i===idx); });
+                e.preventDefault();
+            } else if (e.key === 'Escape') {
+                if (acList) acList.classList.remove('open');
+            }
+        });
+        wrap.addEventListener('click', function(){ typeIn.focus(); });
+        renderChips();
+    }
+
+    // ── Skill tag-chip input ──────────────────────────────
+    var _skillChipsInit = false;
+    function initSkillChips() {
+        if (_skillChipsInit) return;   // guard against double-init
+        _skillChipsInit = true;
+        var wrap    = document.getElementById('skill-tags-wrap');
+        var typeIn  = document.getElementById('skill-type-input');
+        var hidden  = document.getElementById('skills-hidden');
+        var acList  = document.getElementById('ac-skills');
+        if (!wrap || !typeIn || !hidden) return;
+
+        var chips = [];  // array of skill strings currently in the field
+
+        // Expose for resume upload handler
+        window.setSkillsFromList = function(arr) {
+            chips = arr.map(function(s){ return s.trim(); }).filter(Boolean);
+            hidden.value = chips.join(', ');
+            renderChips();
+        };
+
+        // Initialise from server-rendered hidden value
+        var initVal = hidden.value.trim();
+        if (initVal) {
+            chips = initVal.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+        }
+
+        function renderChips() {
+            // Remove all chip elements (keep typeIn and acList)
+            wrap.querySelectorAll('.skill-tag-chip').forEach(function(el){ el.remove(); });
+            chips.forEach(function(sk, i) {
+                var chip = document.createElement('span');
+                chip.className = 'skill-tag-chip';
+                chip.innerHTML = sk + ' <span class="rm" data-i="' + i + '">×</span>';
+                chip.querySelector('.rm').addEventListener('click', function(){
+                    chips.splice(parseInt(this.getAttribute('data-i')), 1);
+                    hidden.value = chips.join(', ');
+                    renderChips();
+                });
+                wrap.insertBefore(chip, typeIn);
+            });
+        }
+
+        function addSkill(sk) {
+            sk = sk.trim();
+            if (!sk) return;
+            if (!chips.map(function(c){ return c.toLowerCase(); }).includes(sk.toLowerCase())) {
+                chips.push(sk);
+                hidden.value = chips.join(', ');
+                renderChips();
+            }
+            typeIn.value = '';
+            acList.classList.remove('open');
+        }
+
+        function showSkillAC() {
+            var q = typeIn.value.trim().toLowerCase();
+            acList.innerHTML = '';
+            var allSkills = AC.skills || [];
+            // Show suggestions that match and aren't already added
+            var added = chips.map(function(c){ return c.toLowerCase(); });
+            var filtered;
+            if (q) {
+                filtered = allSkills.filter(function(s){
+                    return s.toLowerCase().includes(q) && !added.includes(s.toLowerCase());
+                }).slice(0, 12);
+            } else {
+                // Show popular suggestions when field is focused but empty
+                filtered = allSkills.filter(function(s){ return !added.includes(s.toLowerCase()); }).slice(0, 8);
+            }
+            if (!filtered.length) { acList.classList.remove('open'); return; }
+            filtered.forEach(function(item) {
+                var li = document.createElement('li');
+                li.className = 'ac-item';
+                if (q) {
+                    var idx = item.toLowerCase().indexOf(q);
+                    li.innerHTML = item.slice(0,idx) + '<mark>' + item.slice(idx,idx+q.length) + '</mark>' + item.slice(idx+q.length);
+                } else {
+                    li.textContent = item;
+                }
+                li.addEventListener('mousedown', function(e){ e.preventDefault(); addSkill(item); });
+                acList.appendChild(li);
+            });
+            positionList(typeIn, acList);
+            acList.classList.add('open');
+        }
+
+        typeIn.addEventListener('input', showSkillAC);
+        typeIn.addEventListener('focus', showSkillAC);
+        typeIn.addEventListener('blur',  function(){ setTimeout(function(){ acList.classList.remove('open'); }, 150); });
+        typeIn.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ',') {
+                e.preventDefault();
+                var v = typeIn.value.replace(',','').trim();
+                if (v) addSkill(v); else return;
+            } else if (e.key === 'Backspace' && !typeIn.value && chips.length) {
+                chips.pop();
+                hidden.value = chips.join(', ');
+                renderChips();
+            } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                var items = acList.querySelectorAll('.ac-item');
+                var cur = acList.querySelector('.active');
+                var idx = Array.from(items).indexOf(cur);
+                if (e.key === 'ArrowDown') idx = Math.min(idx+1, items.length-1);
+                else idx = Math.max(idx-1, 0);
+                items.forEach(function(it,i){ it.classList.toggle('active', i===idx); });
+                e.preventDefault();
+            } else if (e.key === 'Enter') {
+                var active = acList.querySelector('.active');
+                if (active) { e.preventDefault(); addSkill(active.textContent); }
+            }
+        });
+
+        // Click on the wrap area focuses the input
+        wrap.addEventListener('click', function(){ typeIn.focus(); });
+
+        renderChips();
+    }
+
+    // ── Location tag-chip input ───────────────────────────
+    var _locChipsInit = false;
+    function initLocationChips() {
+        if (_locChipsInit) return;
+        _locChipsInit = true;
+        var wrap   = document.getElementById('loc-tags-wrap');
+        var typeIn = document.getElementById('loc-type-input');
+        var hidden = document.getElementById('location-hidden');
+        var acList = document.getElementById('ac-location');
+        if (!wrap || !typeIn || !hidden) return;
+
+        var chips = [];
+
+        var initVal = hidden.value.trim();
+        if (initVal) {
+            chips = initVal.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+        }
+
+        function renderChips() {
+            wrap.querySelectorAll('.skill-tag-chip').forEach(function(el){ el.remove(); });
+            chips.forEach(function(d, i) {
+                var chip = document.createElement('span');
+                chip.className = 'skill-tag-chip';
+                chip.innerHTML = d + ' <span class="rm" data-i="' + i + '">×</span>';
+            chips.forEach(function(loc, i) {
+                var chip = document.createElement('span');
+                chip.className = 'skill-tag-chip';
+                chip.innerHTML = loc + ' <span class="rm" data-i="' + i + '">×</span>';
                 chip.querySelector('.rm').addEventListener('click', function(){
                     chips.splice(parseInt(this.getAttribute('data-i')), 1);
                     hidden.value = chips.join(', ');
@@ -1782,6 +2283,49 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
         }
 
         typeIn.addEventListener('keydown', function(e){ _locDeleting = (e.key === 'Backspace' || e.key === 'Delete'); });
+        function addLocation(loc) {
+            loc = loc.trim();
+            if (!loc) return;
+            if (!chips.map(function(c){ return c.toLowerCase(); }).includes(loc.toLowerCase())) {
+                chips.push(loc);
+                hidden.value = chips.join(', ');
+                renderChips();
+            }
+            typeIn.value = '';
+            if (acList) acList.classList.remove('open');
+        }
+
+        function showLocAC() {
+            if (!acList) return;
+            var q = typeIn.value.trim().toLowerCase();
+            acList.innerHTML = '';
+            var allLocs = AC.locations || [];
+            var added = chips.map(function(c){ return c.toLowerCase(); });
+            var filtered;
+            if (q) {
+                filtered = allLocs.filter(function(s){
+                    return s.toLowerCase().includes(q) && !added.includes(s.toLowerCase());
+                }).slice(0, 10);
+            } else {
+                filtered = allLocs.filter(function(s){ return !added.includes(s.toLowerCase()); }).slice(0, 8);
+            }
+            if (!filtered.length) { acList.classList.remove('open'); return; }
+            filtered.forEach(function(item) {
+                var li = document.createElement('li');
+                li.className = 'ac-item';
+                if (q) {
+                    var idx = item.toLowerCase().indexOf(q);
+                    li.innerHTML = item.slice(0,idx) + '<mark>' + item.slice(idx,idx+q.length) + '</mark>' + item.slice(idx+q.length);
+                } else {
+                    li.textContent = item;
+                }
+                li.addEventListener('mousedown', function(e){ e.preventDefault(); addLocation(item); });
+                acList.appendChild(li);
+            });
+            positionList(typeIn, acList);
+            acList.classList.add('open');
+        }
+
         typeIn.addEventListener('input', showLocAC);
         typeIn.addEventListener('focus', showLocAC);
         typeIn.addEventListener('blur',  function(){ setTimeout(function(){ if (acList) acList.classList.remove('open'); }, 150); });
@@ -1797,11 +2341,16 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
                 var active = acList ? acList.querySelector('.active') : null;
                 var pick = active ? active.textContent : (isOpen ? items[0].textContent : typeIn.value.replace(',','').trim());
                 if (pick) { e.preventDefault(); addLocation(pick); }
+            if (e.key === 'Enter' || e.key === ',') {
+                e.preventDefault();
+                var v = typeIn.value.replace(',','').trim();
+                if (v) addLocation(v);
             } else if (e.key === 'Backspace' && !typeIn.value && chips.length) {
                 chips.pop();
                 hidden.value = chips.join(', ');
                 renderChips();
             } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                var items = acList ? acList.querySelectorAll('.ac-item') : [];
                 var cur   = acList ? acList.querySelector('.active') : null;
                 var idx   = Array.from(items).indexOf(cur);
                 if (e.key === 'ArrowDown') idx = Math.min(idx+1, items.length-1);
@@ -1875,5 +2424,12 @@ function showExpiredToast() {
     setTimeout(() => { toast.style.display = 'none'; }, 4000);
 }
 </script>
+    }
+
+    // ── Initialise all inputs eagerly ─────────────────────
+    initDesignationChips();
+    initSkillChips();
+    initLocationChips();
+})();</script>
 </body>
 </html>

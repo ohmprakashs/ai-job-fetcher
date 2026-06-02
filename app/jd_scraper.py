@@ -53,6 +53,15 @@ def _has_apply_button(soup) -> bool:
 
 def _extract_linkedin_job_id(url: str) -> str:
     """Extract the numeric job ID from any LinkedIn job URL."""
+
+def _extract_linkedin_job_id(url: str) -> str:
+    """Extract the numeric job ID from any LinkedIn job URL.
+    
+    Handles both:
+    - /jobs/view/4409787311/
+    - /jobs/view/site-reliability-engineer-at-company-4409787311/
+    """
+    # The job ID is a long numeric sequence (7+ digits) at the end of the URL path
     m = _re.search(r'[-/](\d{7,})(?:[/?]|$)', url or "")
     return m.group(1) if m else ""
 
@@ -71,6 +80,12 @@ def scrape_jd_text(url, source):
     source = source.lower()
     try:
         if 'linkedin' in source:
+    if not url: return ""
+    text = ""
+    source = source.lower()
+    try:
+        if 'linkedin' in source:
+            # 1) Try the unauthenticated guest API — returns full JD HTML without login
             job_id = _extract_linkedin_job_id(url)
             if job_id:
                 guest_url = f"https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{job_id}"
@@ -100,6 +115,10 @@ def scrape_jd_text(url, source):
                     pass
 
             # Fallback: direct job page
+                except Exception:
+                    pass
+
+            # 2) Fallback: direct job page (sometimes works for public/cached pages)
             if not text:
                 try:
                     resp = requests.get(url, headers=_LI_HEADERS, timeout=10)
@@ -120,6 +139,11 @@ def scrape_jd_text(url, source):
                     pass
 
         elif 'naukri' in source:
+                except Exception:
+                    pass
+                
+        elif 'naukri' in source:
+            # Needs playwright because of React/SPA
             with sync_playwright() as p:
                 browser = p.chromium.launch(
                     executable_path="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -140,3 +164,16 @@ def scrape_jd_text(url, source):
         print(f"Failed to scrape JD from {url}: {e}")
     return text, is_expired
 
+                # Various Naukri description classes
+                selectors = [".job-desc", ".styles_JDC__...", ".styles_job-desc-container__..."]
+                try:
+                    page.wait_for_selector(".job-desc", timeout=5000)
+                    text = page.locator(".job-desc").inner_text()
+                except:
+                    # fallback get body
+                    text = page.locator("body").inner_text()
+                browser.close()
+    except Exception as e:
+        print(f"Failed to scrape JD from {url}: {e}")
+        pass
+    return text
