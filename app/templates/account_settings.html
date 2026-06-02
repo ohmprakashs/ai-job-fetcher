@@ -264,6 +264,67 @@
     </form>
   </div>
 
+  <!-- ── Social Credentials Card ── -->
+  <div class="card">
+    <div class="card-title">🔑 Job Platform Credentials
+      <span style="font-size:.73rem;font-weight:400;color:#9ca3af;margin-left:6px;">Used for auto-login when fetching jobs</span>
+    </div>
+    <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:9px;padding:11px 14px;margin-bottom:18px;font-size:.82rem;color:#92400e;">
+      🔐 Credentials are stored securely and used only to log into these platforms while fetching jobs. They are never shared.
+    </div>
+    <form method="POST" action="/account-settings">
+      <input type="hidden" name="action" value="social">
+
+      <p style="font-size:.88rem;font-weight:700;color:#0a66c2;margin-bottom:12px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="#0a66c2" style="vertical-align:middle;margin-right:5px;"><path d="M20.45 20.45h-3.554v-5.569c0-1.328-.025-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.049c.476-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.284zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+        LinkedIn Account
+        {% if user.linkedin_email %}<span style="color:#16a34a;font-size:.75rem;font-weight:600;margin-left:6px;">✅ Saved</span>{% endif %}
+      </p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px;">
+        <div class="form-group" style="margin:0;">
+          <label for="linkedin_email">Email</label>
+          <input type="email" id="linkedin_email" name="linkedin_email"
+                 value="{{ user.linkedin_email or '' }}"
+                 placeholder="your@linkedin.com" autocomplete="off">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label for="linkedin_password">Password
+            {% if user.linkedin_email %}<span style="font-size:.72rem;color:#9ca3af;">(leave blank to keep)</span>{% endif %}
+          </label>
+          <input type="password" id="linkedin_password" name="linkedin_password"
+                 placeholder="{% if user.linkedin_email %}••••••••{% else %}LinkedIn password{% endif %}"
+                 autocomplete="new-password">
+        </div>
+      </div>
+
+      <hr class="divider">
+
+      <p style="font-size:.88rem;font-weight:700;color:#ff7555;margin-bottom:12px;">
+        <svg width="14" height="14" viewBox="0 0 32 32" style="vertical-align:middle;margin-right:5px;"><rect width="32" height="32" rx="4" fill="#ff7555"/><text x="4" y="22" font-size="14" font-weight="bold" fill="#fff">N</text></svg>
+        Naukri Account
+        {% if user.naukri_email %}<span style="color:#16a34a;font-size:.75rem;font-weight:600;margin-left:6px;">✅ Saved</span>{% endif %}
+      </p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;">
+        <div class="form-group" style="margin:0;">
+          <label for="naukri_email">Email / Mobile</label>
+          <input type="text" id="naukri_email" name="naukri_email"
+                 value="{{ user.naukri_email or '' }}"
+                 placeholder="Naukri login email" autocomplete="off">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label for="naukri_password">Password
+            {% if user.naukri_email %}<span style="font-size:.72rem;color:#9ca3af;">(leave blank to keep)</span>{% endif %}
+          </label>
+          <input type="password" id="naukri_password" name="naukri_password"
+                 placeholder="{% if user.naukri_email %}••••••••{% else %}Naukri password{% endif %}"
+                 autocomplete="new-password">
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-primary">🔑 Save Credentials</button>
+    </form>
+  </div>
+
   <!-- ── Change Password Card ── -->
   {% if user.auth_type != 'google' %}
   <div class="card">

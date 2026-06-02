@@ -10,68 +10,83 @@
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     min-height: 100vh;
     background: linear-gradient(135deg, #0a66c2 0%, #0d47a1 50%, #1a237e 100%);
-    display: flex; align-items: center; justify-content: center;
-    padding: 16px;
+    display: flex; align-items: center; justify-content: center; padding: 16px;
   }
   .card {
-    background: #fff;
-    border-radius: 20px;
-    padding: 48px 40px;
-    width: 100%;
-    max-width: 420px;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.25);
-    text-align: center;
+    background: #fff; border-radius: 20px; padding: 40px 36px;
+    width: 100%; max-width: 420px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.25);
   }
-  .logo { font-size: 2.8rem; margin-bottom: 8px; }
-  .brand { font-size: 1.5rem; font-weight: 800; color: #0a66c2; margin-bottom: 4px; }
-  .tagline { font-size: 0.88rem; color: #6b7280; margin-bottom: 36px; line-height: 1.5; }
-  .divider { display: flex; align-items: center; gap: 12px; margin: 28px 0; }
+  .logo { font-size: 2.4rem; text-align: center; margin-bottom: 6px; }
+  .brand { font-size: 1.4rem; font-weight: 800; color: #0a66c2; text-align: center; margin-bottom: 4px; }
+  .tagline { font-size: .82rem; color: #6b7280; text-align: center; margin-bottom: 28px; }
+  .alert { border-radius: 8px; padding: 10px 14px; margin-bottom: 18px; font-size: .83rem; }
+  .alert-error   { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; }
+  .alert-success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #16a34a; }
+  label { display: block; font-size: .82rem; font-weight: 600; color: #374151; margin-bottom: 5px; }
+  input[type=email], input[type=password], input[type=text] {
+    width: 100%; padding: 11px 14px; border: 1.5px solid #d1d5db; border-radius: 10px;
+    font-family: inherit; font-size: .93rem; outline: none; transition: border-color .2s;
+    margin-bottom: 16px;
+  }
+  input:focus { border-color: #0a66c2; box-shadow: 0 0 0 3px rgba(10,102,194,.1); }
+  .btn-primary {
+    width: 100%; padding: 13px; background: #0a66c2; color: #fff;
+    border: none; border-radius: 10px; font-family: inherit; font-size: .97rem;
+    font-weight: 700; cursor: pointer; transition: background .2s; margin-top: 4px;
+  }
+  .btn-primary:hover { background: #085396; }
+  .divider { display: flex; align-items: center; gap: 10px; margin: 22px 0; }
   .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: #e5e7eb; }
-  .divider span { font-size: .78rem; color: #9ca3af; white-space: nowrap; }
+  .divider span { font-size: .76rem; color: #9ca3af; white-space: nowrap; }
   .google-btn {
-    display: flex; align-items: center; justify-content: center; gap: 12px;
-    width: 100%; padding: 14px 20px;
-    background: #fff; color: #374151;
-    border: 1.5px solid #d1d5db; border-radius: 12px;
-    font-family: inherit; font-size: .95rem; font-weight: 600;
-    text-decoration: none; cursor: pointer;
-    transition: border-color .2s, box-shadow .2s, background .15s;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    width: 100%; padding: 12px 20px; background: #fff; color: #374151;
+    border: 1.5px solid #d1d5db; border-radius: 10px; font-family: inherit;
+    font-size: .93rem; font-weight: 600; text-decoration: none; cursor: pointer;
+    transition: border-color .2s, box-shadow .2s;
   }
-  .google-btn:hover {
-    border-color: #0a66c2; box-shadow: 0 0 0 3px rgba(10,102,194,.12);
-    background: #f0f7ff;
-  }
-  .google-icon { width: 22px; height: 22px; flex-shrink: 0; }
-  .features {
-    margin-top: 36px; text-align: left;
-    display: grid; gap: 10px;
-  }
-  .feature { display: flex; align-items: flex-start; gap: 10px; }
-  .feature-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
-  .feature-text { font-size: .83rem; color: #4b5563; line-height: 1.5; }
-  .feature-text strong { color: #111827; }
-  .footer-note { margin-top: 28px; font-size: .75rem; color: #9ca3af; line-height: 1.6; }
-  .error-banner {
-    background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px;
-    padding: 10px 14px; margin-bottom: 20px;
-    font-size: .83rem; color: #dc2626;
-  }
+  .google-btn:hover { border-color: #0a66c2; box-shadow: 0 0 0 3px rgba(10,102,194,.1); }
+  .google-btn.disabled { opacity: .45; cursor: not-allowed; pointer-events: none; }
+  .google-icon { width: 20px; height: 20px; flex-shrink: 0; }
+  .switch-link { text-align: center; margin-top: 22px; font-size: .83rem; color: #6b7280; }
+  .switch-link a { color: #0a66c2; font-weight: 700; text-decoration: none; }
+  .switch-link a:hover { text-decoration: underline; }
+  .forgot { font-size: .78rem; color: #0a66c2; text-decoration: none; float: right; margin-top: -12px; margin-bottom: 16px; display: block; text-align: right; }
+  @media (max-width: 480px) { .card { padding: 28px 20px; } }
 </style>
 </head>
 <body>
 <div class="card">
   <div class="logo">🤖</div>
   <div class="brand">AI Job Matcher</div>
-  <div class="tagline">Fetch jobs from LinkedIn &amp; Naukri,<br>score your CV with ATS, generate smart resumes.</div>
+  <div class="tagline">Sign in to search jobs, check ATS scores &amp; generate smart CVs</div>
 
   {% if error %}
-  <div class="error-banner">⚠️ {{ error }}</div>
+  <div class="alert alert-error">⚠️ {{ error }}</div>
   {% endif %}
+  {% if success %}
+  <div class="alert alert-success">✅ {{ success }}</div>
+  {% endif %}
+
+  <form method="POST" action="/login" autocomplete="on">
+    <label for="email">Email address</label>
+    <input type="email" id="email" name="email" placeholder="you@example.com"
+           value="{{ prefill_email or '' }}" required autocomplete="email">
+
+    <label for="password">Password</label>
+    <input type="password" id="password" name="password" placeholder="Enter your password"
+           required autocomplete="current-password">
+
+    <button type="submit" class="btn-primary">Sign In</button>
+  </form>
+
+  <div class="divider"><span>or continue with</span></div>
 
   {% if sso_enabled %}
   <a href="{{ url_for('google.login') }}" class="google-btn">
   {% else %}
-  <a href="#" class="google-btn" style="opacity:.5;cursor:not-allowed;pointer-events:none;">
+  <a href="#" class="google-btn disabled">
   {% endif %}
     <svg class="google-icon" viewBox="0 0 48 48">
       <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
@@ -82,30 +97,8 @@
     Continue with Google
   </a>
 
-  <div class="divider"><span>What you get</span></div>
-
-  <div class="features">
-    <div class="feature">
-      <div class="feature-icon">🔍</div>
-      <div class="feature-text"><strong>Smart Job Search</strong> — Fetch live jobs from LinkedIn &amp; Naukri matching your skills</div>
-    </div>
-    <div class="feature">
-      <div class="feature-icon">🎯</div>
-      <div class="feature-text"><strong>ATS Scorecard</strong> — See how well your CV matches each job description</div>
-    </div>
-    <div class="feature">
-      <div class="feature-icon">✨</div>
-      <div class="feature-text"><strong>Smart CV Generator</strong> — Auto-tailor your resume to boost ATS score by 10–20%</div>
-    </div>
-    <div class="feature">
-      <div class="feature-icon">🤖</div>
-      <div class="feature-text"><strong>Auto-Apply Bot</strong> — Automatically apply to matching jobs on LinkedIn</div>
-    </div>
-  </div>
-
-  <div class="footer-note">
-    By signing in you agree to use this app responsibly.<br>
-    Your data is stored only on this server and never shared.
+  <div class="switch-link">
+    Don't have an account? <a href="/register">Create account</a>
   </div>
 </div>
 </body>

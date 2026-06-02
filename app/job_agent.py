@@ -13,7 +13,7 @@ class JobAIAgent:
         self.jobs = []
         self.summary = {}
 
-    def fetch_and_summarize(self):
+    def fetch_and_summarize(self, credentials=None):
         # 1. Fire live fetch in background — do NOT block the request.
         #    Results will be in the DB by the next search.
         _skills = list(self.skills)
@@ -21,10 +21,12 @@ class JobAIAgent:
         _loc = self.location
         _exp = self.experience_years
         _days = self.posted_within_days
+        _creds = credentials or {}
         def _bg_fetch():
             try:
                 live = fetch_jobs(_skills, designation=_desig, location=_loc,
-                                  experience_years=_exp, posted_within_days=_days)
+                                  experience_years=_exp, posted_within_days=_days,
+                                  credentials=_creds)
                 insert_jobs(live)
             except Exception as exc:
                 print(f"[agent] background fetch error: {exc}")

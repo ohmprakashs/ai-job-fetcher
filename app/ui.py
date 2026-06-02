@@ -8,7 +8,8 @@ from job_db import (init_db, mark_job_applied, get_job_applications_status, get_
                     check_and_mark_expired_jobs, get_new_jobs_count, update_application_status,
                     mark_job_status, get_lifecycle_stats, bulk_mark_expired_from_text,
                     verify_new_jobs_for_expiry, upsert_google_user, get_user_by_id,
-                    register_user, get_user_by_email, update_last_login, update_user_profile)
+                    register_user, get_user_by_email, update_last_login, update_user_profile,
+                    _decode_cred)
 import os
 import threading
 import time
@@ -217,6 +218,22 @@ def account_settings():
                         from flask_login import login_user as _login_user
                         _login_user(_UserObj(user_row), remember=True)
 
+        elif action == "social":
+            li_email  = request.form.get("linkedin_email", "").strip()
+            li_pass   = request.form.get("linkedin_password", "")
+            nk_email  = request.form.get("naukri_email", "").strip()
+            nk_pass   = request.form.get("naukri_password", "")
+            user_row, err = update_user_profile(
+                uid,
+                linkedin_email=li_email or None,
+                linkedin_password=li_pass if li_pass else None,
+                naukri_email=nk_email or None,
+                naukri_password=nk_pass if nk_pass else None,
+            )
+            error = err or ""
+            if not err:
+                success = "Social account credentials saved."
+
         elif action == "password":
             if user_row.get("auth_type") == "google":
                 error = "Password cannot be changed for Google Sign-In accounts."
@@ -389,7 +406,14 @@ def index():
             experience_years=experience_years,
             posted_within_days=posted_within_days,
         )
-        agent.fetch_and_summarize()
+        # Pass stored social credentials so fetcher auto-logs in
+        _cu_row = get_user_by_id(session.get("user_id") or 0) or {}
+        agent.fetch_and_summarize(credentials={
+            "linkedin_email":    _cu_row.get("linkedin_email") or "",
+            "linkedin_password": _decode_cred(_cu_row.get("linkedin_password") or ""),
+            "naukri_email":      _cu_row.get("naukri_email") or "",
+            "naukri_password":   _decode_cred(_cu_row.get("naukri_password") or ""),
+        })
         jobs = agent.get_jobs()
         
         # Removed the strict local text fallback filter.

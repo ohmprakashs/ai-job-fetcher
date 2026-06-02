@@ -165,9 +165,9 @@ def _job_matches_posted_within(job: dict, within_days: int) -> bool:
 import time
 import os
 
-def fetch_naukri_jobs_playwright(skills, location="", designation=""):
+def fetch_naukri_jobs_playwright(skills, location="", designation="", email="", password=""):
     """
-    Fetch jobs from Naukri.com matching the given skills using Playwright + stealth.
+    Fetch jobs from Naukri.com. If email+password are provided, logs in first.
     """
     jobs = []
     keyword = f'{designation} {_build_search_keyword(skills)}'.strip()
@@ -197,6 +197,19 @@ def fetch_naukri_jobs_playwright(skills, location="", designation=""):
                 context = browser.new_context(user_agent=user_agent)
                 page = context.new_page()
                 Stealth().apply_stealth_sync(page)
+
+                # Auto-login to Naukri if credentials are provided
+                if email and password:
+                    try:
+                        page.goto("https://www.naukri.com/nlogin/login", timeout=20000)
+                        page.wait_for_selector("input#usernameField", timeout=8000)
+                        page.fill("input#usernameField", email)
+                        page.fill("input#passwordField", password)
+                        page.click("button[type=submit]")
+                        page.wait_for_timeout(2500)
+                        print("[naukri] Logged in successfully.")
+                    except Exception as login_err:
+                        print(f"[naukri] Login skipped: {login_err}")
 
                 for page_num in range(1, 2):  # 1 page only — fast enough, avoids timeouts
                     current_url = naukri_url if page_num == 1 else f"{naukri_url}-{page_num}"
@@ -285,11 +298,64 @@ def fetch_naukri_jobs_playwright(skills, location="", designation=""):
     return jobs
 
 
+def _playwright_linkedin_fetch(jobs_list, base_url, email, password, seen_urns):
+    """Login to LinkedIn via Playwright and scrape job cards."""
+    ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    with sync_playwright() as p:
+        browser = p.chromium.launch(
+            executable_path="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+            headless=True,
+            args=["--disable-gpu", "--no-sandbox", "--disable-dev-shm-usage"],
+        )
+        try:
+            context = browser.new_context(user_agent=ua)
+            page = context.new_page()
+            Stealth().apply_stealth_sync(page)
+            # Login
+            page.goto("https://www.linkedin.com/login", timeout=20000)
+            page.wait_for_selector("input#username", timeout=8000)
+            page.fill("input#username", email)
+            page.fill("input#password", password)
+            page.click("button[type=submit]")
+            page.wait_for_timeout(3000)
+            print("[linkedin] Logged in.")
+            # Fetch jobs page
+            for start in [0, 25]:
+                url = f"{base_url}&start={start}"
+                page.goto(url, timeout=20000)
+                page.wait_for_timeout(2000)
+                soup = BeautifulSoup(page.content(), "html.parser")
+                for card in soup.find_all("div", class_="base-card"):
+                    urn = card.get("data-entity-urn", "")
+                    if not urn or urn in seen_urns:
+                        continue
+                    seen_urns.add(urn)
+                    info = card.find("div", class_="base-search-card__info")
+                    if not info:
+                        continue
+                    title_el = info.find("h3")
+                    company_el = info.find("h4")
+                    loc_el = info.find("span", class_="job-search-card__location")
+                    a_el = card.find("a", href=True)
+                    title = title_el.get_text(strip=True) if title_el else ""
+                    company = company_el.get_text(strip=True) if company_el else ""
+                    location_str = loc_el.get_text(strip=True) if loc_el else ""
+                    job_url = a_el["href"] if a_el else ""
+                    if title:
+                        jobs_list.append({
+                            "title": title, "company": company, "location": location_str,
+                            "url": job_url, "skills": [], "source": "LinkedIn",
+                            "apply_type": "LinkedIn Apply",
+                        })
+        finally:
+            browser.close()
+
+
 # --- LinkedIn Fetcher ---
-def fetch_linkedin_jobs(skills, location="", designation=""):
+def fetch_linkedin_jobs(skills, location="", designation="", email="", password=""):
     """
-    Fetch jobs from LinkedIn matching the given skills using requests and BeautifulSoup.
-    Checks Easy Apply and Apply on company site using f_AL parameter.
+    Fetch jobs from LinkedIn. If email+password are provided, uses Playwright with login
+    for authenticated access; otherwise falls back to anonymous requests scraping.
     """
     jobs = []
     keyword = f'{designation} {_build_search_keyword(skills)}'.strip()
@@ -300,6 +366,15 @@ def fetch_linkedin_jobs(skills, location="", designation=""):
     }
 
     seen_urns = set()
+
+    # If credentials provided, try Playwright authenticated scrape
+    if email and password:
+        try:
+            _playwright_linkedin_fetch(jobs, base_url, email, password, seen_urns)
+            if jobs:
+                return jobs
+        except Exception as e:
+            print(f"[linkedin] Playwright login fetch failed, falling back to anonymous: {e}")
 
     try:
         for is_easy_apply in [True, False]:
@@ -482,6 +557,7 @@ def fetch_jobs(
     location="",
     experience_years: Optional[int] = None,
     posted_within_days: Optional[int] = None,
+    credentials: dict = None,
 ):
     """
     Fetch jobs from both Naukri and LinkedIn, combining results.
@@ -492,6 +568,11 @@ def fetch_jobs(
     """
     jobs = []
     jobs_lock = __import__("threading").Lock()
+    creds = credentials or {}
+    li_email  = creds.get("linkedin_email", "")
+    li_pass   = creds.get("linkedin_password", "")
+    nk_email  = creds.get("naukri_email", "")
+    nk_pass   = creds.get("naukri_password", "")
 
     locations = [loc.strip() for loc in location.split(",") if loc.strip()]
     if not locations:
@@ -504,7 +585,8 @@ def fetch_jobs(
 
     def _run_linkedin(pair_list, loc):
         try:
-            results = fetch_linkedin_jobs(pair_list, loc, designation)
+            results = fetch_linkedin_jobs(pair_list, loc, designation,
+                                          email=li_email, password=li_pass)
             with jobs_lock:
                 jobs.extend(results)
         except Exception as e:
@@ -516,7 +598,8 @@ def fetch_jobs(
 
     def _run_naukri(pair_list, loc):
         try:
-            results = fetch_naukri_jobs_playwright(pair_list, loc, designation)
+            results = fetch_naukri_jobs_playwright(pair_list, loc, designation,
+                                                   email=nk_email, password=nk_pass)
             with jobs_lock:
                 jobs.extend(results)
         except Exception as e:

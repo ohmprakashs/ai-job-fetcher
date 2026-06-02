@@ -85,6 +85,10 @@ def init_db():
             google_id TEXT,
             linkedin_url TEXT,
             naukri_url TEXT,
+            linkedin_email TEXT,
+            linkedin_password TEXT,
+            naukri_email TEXT,
+            naukri_password TEXT,
             created_at TEXT,
             last_login TEXT
         )
@@ -92,7 +96,9 @@ def init_db():
     # Migrate: add new columns to existing table if not present
     for col, ctype in [("phone", "TEXT"), ("password_hash", "TEXT"),
                        ("auth_type", "TEXT DEFAULT 'email'"), ("google_id", "TEXT"),
-                       ("linkedin_url", "TEXT"), ("naukri_url", "TEXT")]:
+                       ("linkedin_url", "TEXT"), ("naukri_url", "TEXT"),
+                       ("linkedin_email", "TEXT"), ("linkedin_password", "TEXT"),
+                       ("naukri_email", "TEXT"), ("naukri_password", "TEXT")]:
         try:
             c.execute(f"ALTER TABLE users ADD COLUMN {col} {ctype}")
         except sqlite3.OperationalError:
@@ -176,7 +182,29 @@ def get_user_by_id(user_id):
     finally:
         conn.close()
 
-def update_user_profile(user_id, name=None, email=None, phone=None, linkedin_url=None, naukri_url=None, new_password_hash=None):
+def _encode_cred(val):
+    """Minimal obfuscation for stored credentials (base64). Not encryption."""
+    if not val:
+        return None
+    import base64
+    return base64.b64encode(val.encode()).decode()
+
+def _decode_cred(val):
+    """Decode a stored credential."""
+    if not val:
+        return ""
+    import base64
+    try:
+        return base64.b64decode(val.encode()).decode()
+    except Exception:
+        return val
+
+
+def update_user_profile(user_id, name=None, email=None, phone=None,
+                        linkedin_url=None, naukri_url=None,
+                        linkedin_email=None, linkedin_password=None,
+                        naukri_email=None, naukri_password=None,
+                        new_password_hash=None):
     """Update editable profile fields. Returns (user_row, error_string)."""
     conn = get_conn()
     try:
@@ -202,6 +230,14 @@ def update_user_profile(user_id, name=None, email=None, phone=None, linkedin_url
             if url and not url.startswith("http"):
                 url = "https://" + url
             updates.append("naukri_url=?"); params.append(url or None)
+        if linkedin_email is not None:
+            updates.append("linkedin_email=?"); params.append(linkedin_email.strip() or None)
+        if linkedin_password is not None:
+            updates.append("linkedin_password=?"); params.append(_encode_cred(linkedin_password) if linkedin_password.strip() else None)
+        if naukri_email is not None:
+            updates.append("naukri_email=?"); params.append(naukri_email.strip() or None)
+        if naukri_password is not None:
+            updates.append("naukri_password=?"); params.append(_encode_cred(naukri_password) if naukri_password.strip() else None)
         if new_password_hash is not None:
             updates.append("password_hash=?"); params.append(new_password_hash)
         if not updates:
