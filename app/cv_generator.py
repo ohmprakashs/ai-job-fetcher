@@ -225,6 +225,7 @@ def build_tailored_pdf(job_dict, base_pdf_path, output_pdf_path):
     # Try to scrape real JD text to improve skill matching in the template
     real_jd, _expired = scrape_jd_text(url, source)
     real_jd = real_jd or ""
+    real_jd = scrape_jd_text(url, source)
 
     tailored_text = format_offline_cv(base_text, title, company, skills, real_jd)
     create_pdf(tailored_text, output_pdf_path)

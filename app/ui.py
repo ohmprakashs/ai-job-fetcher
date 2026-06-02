@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify, session
+from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify
 from job_agent import JobAIAgent
 from job_fetcher import find_common_jobs
 from job_db import (init_db, mark_job_applied, get_job_applications_status, get_job_by_id,
@@ -10,6 +11,7 @@ from job_db import (init_db, mark_job_applied, get_job_applications_status, get_
                     verify_new_jobs_for_expiry, upsert_google_user, get_user_by_id,
                     register_user, get_user_by_email, update_last_login, update_user_profile,
                     _decode_cred)
+                    mark_job_status, get_lifecycle_stats)
 import os
 import threading
 import time
@@ -270,6 +272,7 @@ def _get_current_user():
                                    "email": row.get("email",""), "picture": row.get("picture","")})()
     return type("U", (), {"is_authenticated": False, "name": "", "email": "", "picture": ""})()
 
+app.secret_key = "secret_jobs_key"
 
 def _startup_background_work():
     """On startup: backfill skills, fetch missing JDs, then run stale-job checker."""
@@ -294,6 +297,7 @@ def _startup_background_work():
                     mark_job_status(job["id"], "expired")
                     continue
                 jd_text = jd_text or ""
+                jd_text = scrape_jd_text(job["url"], job["source"].lower()) or ""
                 if jd_text and len(jd_text) > 100:
                     extracted = _extract_skills_from_text(jd_text)
                     skills_str = ",".join(sorted(set(extracted))) if extracted else ""
@@ -318,6 +322,7 @@ def _startup_background_work():
             print(f"[lifecycle] Removed {new_expired} newly-fetched jobs already closed on LinkedIn.")
 
         # Step 5: check for expired/filled jobs via HTTP (throttled, 20 per startup)
+        # Step 3: check for expired/filled jobs (throttled, 20 per startup)
         result = check_and_mark_expired_jobs(limit=20)
         if result["checked"]:
             print(f"[lifecycle] Checked {result['checked']} jobs: "
@@ -414,6 +419,7 @@ def index():
             "naukri_email":      _cu_row.get("naukri_email") or "",
             "naukri_password":   _decode_cred(_cu_row.get("naukri_password") or ""),
         })
+        agent.fetch_and_summarize()
         jobs = agent.get_jobs()
         
         # Removed the strict local text fallback filter.
@@ -433,6 +439,9 @@ def index():
     applied_count = get_applied_count()
     new_jobs_count = get_new_jobs_count()
     now_date = datetime.utcnow().strftime('%Y-%m-%d')
+    new_jobs_count = get_new_jobs_count(hours=24)
+    from datetime import timedelta
+    now_date = (datetime.utcnow() - timedelta(hours=24)).strftime('%Y-%m-%d')
 
     return render_template(
         'index.html',
@@ -503,6 +512,7 @@ def api_lifecycle_stats():
     init_db()
     stats = get_lifecycle_stats()
     stats['new_24h'] = get_new_jobs_count()
+    stats['new_24h'] = get_new_jobs_count(hours=24)
     return jsonify(stats)
 
 
@@ -794,6 +804,7 @@ def ai_match(job_id):
             pass
     if not jd_text:
         jd_text = (job.get("snippet") or "").strip()
+    jd_text = scrape_jd_text(job.get("url", ""), job.get("source", ""))
     report = generate_ai_match_report(resume_path, job, jd_text)
     return jsonify({"status": "success", "report": report})
 
@@ -819,6 +830,7 @@ def ats_scorecard(job_id):
     if not jd_text:
         jd_text = (job.get("snippet") or "").strip()
 
+    jd_text = scrape_jd_text(job.get("url", ""), job.get("source", ""))
     scorecard = generate_ats_scorecard(resume_path, job, jd_text)
     if "error" in scorecard:
         return jsonify({"status": "error", "message": scorecard["error"]}), 400
@@ -851,6 +863,7 @@ def smart_tailor_cv(job_id):
             pass
     if not jd_text:
         jd_text = (job.get("snippet") or "").strip()
+    jd_text = scrape_jd_text(job.get("url", ""), job.get("source", ""))
 
     try:
         result = tailor_cv_smart(base_pdf_path, job, output_pdf_path, jd_text)
@@ -1025,6 +1038,10 @@ def autocomplete():
         # Sort by frequency descending
         db_locs_sorted = [loc for loc, _ in sorted(db_loc_freq.items(), key=lambda x: -x[1])]
 
+        # Pull unique locations from DB jobs
+        db_locs = [r[0].strip() for r in conn.execute(
+            "SELECT DISTINCT location FROM jobs WHERE location IS NOT NULL AND location != '' AND location != 'N/A' ORDER BY location"
+        ).fetchall() if r[0] and len(r[0]) < 60]
         # Pull unique skills from DB job tags (comma-separated)
         db_skills_raw = conn.execute(
             "SELECT skills FROM jobs WHERE skills IS NOT NULL AND skills != ''"
@@ -1047,6 +1064,12 @@ def autocomplete():
             merged_locs.append(l)
             locs_seen.add(l.lower())
     for l in LOCATIONS:
+        db_locs, db_skills = [], set()
+
+    # Merge and deduplicate (case-insensitive)
+    locs_seen = {l.lower() for l in LOCATIONS}
+    merged_locs = list(LOCATIONS)
+    for l in db_locs:
         if l.lower() not in locs_seen:
             merged_locs.append(l)
             locs_seen.add(l.lower())

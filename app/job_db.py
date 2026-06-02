@@ -20,6 +20,11 @@ def get_conn():
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
     conn.execute("PRAGMA busy_timeout=30000")  # 30s wait at SQLite level too
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+    except sqlite3.OperationalError:
+        pass  # DB may be mid-transition; WAL will activate on next open
     return conn
 
 def init_db():
@@ -276,6 +281,7 @@ def insert_or_update_job(job):
                 status=CASE WHEN jobs.status IN ('expired','filled','closed')
                             THEN jobs.status
                             ELSE jobs.status END
+                status=CASE WHEN jobs.status='expired' THEN 'active' ELSE jobs.status END
         ''', (
             job.get('title', ''),
             job.get('company', ''),
@@ -567,6 +573,16 @@ def get_new_jobs_count() -> int:
                 OR (posted_date IS NOT NULL AND posted_date >= date('now', '-1 day'))
             )
         """).fetchone()[0]
+def get_new_jobs_count(hours: int = 24) -> int:
+    """Count jobs added in the last N hours (uses first_seen_at)."""
+    conn = get_conn()
+    try:
+        cutoff = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
+        return conn.execute("""
+            SELECT COUNT(*) FROM jobs
+            WHERE status='active'
+            AND first_seen_at >= datetime(?, '-' || ? || ' hours')
+        """, (cutoff, str(hours))).fetchone()[0]
     finally:
         conn.close()
 
@@ -577,6 +593,10 @@ def get_stale_jobs_to_check(limit: int = 20) -> list:
     - never checked (last_checked_at IS NULL), OR
     - last checked more than 1 hour ago
     Prioritised: unchecked first, then oldest check time.
+    Return jobs that should be re-validated:
+    - active, have a URL
+    - not checked in last 48h (or never checked)
+    - not applied (no point checking those)
     """
     conn = get_conn()
     try:
@@ -592,6 +612,11 @@ def get_stale_jobs_to_check(limit: int = 20) -> list:
             )
             ORDER BY
                 last_checked_at ASC NULLS FIRST
+            AND (
+                last_checked_at IS NULL
+                OR last_checked_at < datetime('now', '-48 hours')
+            )
+            ORDER BY fetched_at ASC
             LIMIT ?
         """, (limit,)).fetchall()
         return [{"id": r[0], "url": r[1], "source": r[2],
@@ -606,6 +631,7 @@ def check_and_mark_expired_jobs(limit: int = 20) -> dict:
     mark status accordingly.
     Sleep happens OUTSIDE the DB lock so we never hold a write connection open
     during network requests.
+    mark status accordingly. Returns summary dict.
     """
     import time
     try:
@@ -620,6 +646,68 @@ def check_and_mark_expired_jobs(limit: int = 20) -> dict:
     # Phase 1: network requests (NO DB lock held)
     results = []  # (job_id, new_status)
     now = datetime.utcnow().isoformat()
+    checked = expired = still_active = 0
+    now = datetime.utcnow().isoformat()
+
+    conn = get_conn()
+    try:
+        for job in jobs:
+            try:
+                time.sleep(1.5)
+                jd_text = scrape_jd_text(job["url"], job["source"].lower()) or ""
+                jd_lower = jd_text.lower()
+
+                # Determine new status
+                if not jd_text or len(jd_text) < 30:
+                    new_status = "expired"   # page returned nothing — likely removed
+                elif any(sig in jd_lower for sig in _EXPIRED_SIGNALS):
+                    new_status = "expired"
+                else:
+                    new_status = "active"
+
+                conn.execute(
+                    "UPDATE jobs SET status=?, last_checked_at=? WHERE id=?",
+                    (new_status, now, job["id"])
+                )
+                checked += 1
+                if new_status == "expired":
+                    expired += 1
+                    print(f"[lifecycle] Expired: {job['title']} @ {job['company']}")
+                else:
+                    still_active += 1
+            except Exception:
+                pass
+        conn.commit()
+    finally:
+        conn.close()
+
+    return {"checked": checked, "expired": expired, "still_active": still_active}
+
+
+def get_lifecycle_stats() -> dict:
+    """Return counts for each job status for the UI."""
+    conn = get_conn()
+    try:
+        rows = conn.execute("""
+            SELECT
+                COUNT(*) total,
+                SUM(CASE WHEN status='active' THEN 1 ELSE 0 END) active,
+                SUM(CASE WHEN status='expired' THEN 1 ELSE 0 END) expired,
+                SUM(CASE WHEN status='filled' THEN 1 ELSE 0 END) filled,
+                SUM(CASE WHEN application_status='shortlisted' THEN 1 ELSE 0 END) shortlisted,
+                SUM(CASE WHEN application_status='rejected' THEN 1 ELSE 0 END) rejected,
+                SUM(CASE WHEN application_status='no_response' THEN 1 ELSE 0 END) no_response
+            FROM jobs
+        """).fetchone()
+        return {
+            "total": rows[0] or 0, "active": rows[1] or 0, "expired": rows[2] or 0,
+            "filled": rows[3] or 0, "shortlisted": rows[4] or 0,
+            "rejected": rows[5] or 0, "no_response": rows[6] or 0,
+        }
+    finally:
+        conn.close()
+
+def insert_jobs(jobs):
     for job in jobs:
         try:
             time.sleep(1.5)
