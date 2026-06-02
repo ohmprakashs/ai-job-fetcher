@@ -3,6 +3,7 @@ from collections import defaultdict
 from job_db import init_db, insert_jobs, get_jobs_from_db, update_job_description, verify_new_jobs_for_expiry
 import threading
 import time
+import re as _re
 
 # ── Global search state tracker ──────────────────────────
 # Maps search_id → {'status': 'running'|'done', 'count': N, 'started': timestamp}
@@ -13,6 +14,14 @@ _search_lock  = threading.Lock()
 def get_search_status(search_id):
     with _search_lock:
         return dict(_search_state.get(search_id, {}))
+
+
+_GENERIC_WORDS = {
+    'engineer','senior','junior','lead','manager','developer','analyst',
+    'specialist','associate','executive','officer','head','principal',
+    'staff','architect','consultant','intern','trainee','fresher',
+    'support',  # too generic alone; "desktop support" uses "desktop" as key word
+}
 
 
 class JobAIAgent:
@@ -28,12 +37,8 @@ class JobAIAgent:
     def fetch_and_summarize(self, credentials=None, search_id=None):
         """
         Fire a background fetch (non-blocking) so the page loads instantly.
-        The caller passes a search_id; clients poll /api/search-status/<id>
-        to know when results are ready.
-
-        Skips fetching if a fetch for this same designation+location was
-        completed within the last 10 minutes (avoids redundant double-fetches
-        when the page auto-resubmits after the first fetch completes).
+        Clients poll /api/search-status/<id> to know when results are ready.
+        Throttle: skips if same desig+location fetched within 10 minutes.
         """
         _skills = list(self.skills)
         _desig  = self.designation
@@ -41,15 +46,15 @@ class JobAIAgent:
         _exp    = self.experience_years
         _days   = self.posted_within_days
         _creds  = credentials or {}
+        _now    = time.time()
 
-        # Throttle: skip if we recently fetched for same designation+location
-        _cache_key = f"{_desig}|{_loc}"
-        _now = time.time()
-        _THROTTLE_SECS = 600  # 10 minutes
+        _cache_key   = f"{_desig}|{_loc}"
+        _THROTTLE    = 600  # 10 min — skip repeat fetches after auto-reload
+
         _skip_fetch = False
         with _search_lock:
             last = _search_state.get('__last__' + _cache_key, {})
-            if last.get('status') == 'done' and (_now - last.get('started', 0)) < _THROTTLE_SECS:
+            if last.get('status') == 'done' and (_now - last.get('started', 0)) < _THROTTLE:
                 _skip_fetch = True
                 if search_id:
                     _search_state[search_id] = {'status': 'done', 'count': last.get('count', 0), 'started': _now}
@@ -80,229 +85,154 @@ class JobAIAgent:
 
         threading.Thread(target=_bg_fetch, daemon=True).start()
 
-        # Return cached jobs immediately (may be empty on first run)
-        all_cached_jobs = get_jobs_from_db()
-        return self._filter_and_score(all_cached_jobs)
+        # Return cached DB results immediately (before bg fetch completes)
+        return self._filter_and_score(get_jobs_from_db())
 
     def _filter_and_score(self, all_cached_jobs):
+        """Filter and ATS-score DB jobs. NEVER makes HTTP requests."""
+
+        # ── Pre-compute location expansion once ──────────────
+        expanded_locs = set()
+        if self.location:
+            city = self.location.lower()  # always lowercase for case-insensitive match
+            if "," in city:
+                city = city.rsplit(",", 1)[0].strip()
+            expanded_locs = {city}
+            for part in city.split("/"):
+                p = part.strip()
+                if p:
+                    expanded_locs.add(p)
+            if "bangalore" in city or "bengaluru" in city:
+                expanded_locs.update(["bangalore", "bengaluru"])
+
+        # ── Pre-compute designation words once ───────────────
+        desig_list = [d.strip() for d in self.designation.split(",") if d.strip()]
+
         filtered_jobs = []
-        lazy_jd_fetches = 0   # disabled — JD fetches now happen in startup background only
-        _MAX_LAZY_FETCHES = 0  # set to 0 to keep request path fast
+
         for job in all_cached_jobs:
-            # Skip jobs marked as expired/filled/closed
+            # Skip expired/filled/closed
             if job.get("status") in ("expired", "filled", "closed"):
                 continue
 
-            # Check location
-            if self.location:
+            # ── Location filter ───────────────────────────────
+            if expanded_locs:
                 job_loc = str(job.get("location", "")).lower()
-
-                # Extract city names only (strip "State" part after comma, handle "City / City" combos)
-                def _city_only(s):
-                    s = s.strip().lower()
-                    if "," in s:
-                        s = s.rsplit(",", 1)[0].strip()
-                    return s
-
-                # Support multiple locations separated by semicolon (e.g. "Chennai, TN; Mumbai, MH")
-                raw_locs = [l.strip() for l in self.location.replace(";", ",").split(",") if l.strip()]
-                # Rebuild: treat "City, State" as a single entry by re-joining pairs
-                # self.location is a single entry like "Chennai, Tamil Nadu"
-                # so just extract city from the whole string
-                city = _city_only(self.location)
-                expanded_locs = {city}
-                # Handle "City / City" combos (e.g. "Bangalore / Bengaluru")
-                for part in city.split("/"):
-                    expanded_locs.add(part.strip())
-                # Always expand Bangalore ↔ Bengaluru
-                if "bangalore" in city or "bengaluru" in city:
-                    expanded_locs.update(["bangalore", "bengaluru"])
-
-                if expanded_locs and not any(l and l in job_loc for l in expanded_locs):
+                if not any(loc and loc in job_loc for loc in expanded_locs):
                     continue
-                
-            # Let the advanced scoring logic handle skill matching later.
-            # We no longer hard-filter jobs based on strict skill title matches here.
-                 
-            # Check experience
+
+            # ── Experience filter ─────────────────────────────
             if self.experience_years is not None:
                 if not _job_matches_experience(job, self.experience_years):
                     continue
-                    
-            # Check posted within days
+
+            # ── Posted-within filter ──────────────────────────
             if self.posted_within_days is not None:
                 if not _job_matches_posted_within(job, self.posted_within_days):
                     continue
-                    
-            # Check designation flexibly against Job Title (now just a soft filter for scoring)
-            if self.designation:
-                job_title = str(job.get("title", "")).lower()
-                desig_parts = self.designation.replace(',', ' ').split()
-                # We won't block the job here anymore. We will let the score decide.
 
-            # Calculate Advanced ATS match score (Resume vs JD)
-            import re as _re
-            score = 0
-            job_title_lower = str(job.get("title", "")).lower()
-            job_skills_lower = [str(s).lower().strip() for s in job.get("skills", [])]
-
-            matched_skills = []
-            missing_skills = []
+            # ── ATS Scoring ───────────────────────────────────
+            score            = 0
+            matched_skills   = []
+            missing_skills   = []
+            job_title_lower  = str(job.get("title", "")).lower()
 
             if self.skills:
-                # Naukri provides explicit skill tags; LinkedIn does not.
-                job_required_skills = [s for s in job_skills_lower if len(s) > 1]
+                job_skills_lower   = [str(s).lower().strip() for s in job.get("skills", [])]
+                job_required       = [s for s in job_skills_lower if len(s) > 1]
+                job_description    = str(job.get("description") or "").strip()
+                job_snippet        = str(job.get("snippet")     or "").strip()
+                job_source         = str(job.get("source", "")  or "").lower()
 
-                # ── Fetch real JD text for LinkedIn jobs ──────────────────
-                # LinkedIn card pages don't include skill tags. When a job
-                # has no cached description, fetch it now (fast HTTP GET) and
-                # cache it so we only do this once per job.
-                # Guard: use `or ""` to safely convert DB NULLs (Python None) to ""
-                job_description = str(job.get("description") or "").strip()
-                job_snippet     = str(job.get("snippet")     or "").strip()
-                job_source      = str(job.get("source",   "") or "").lower()
-
-                # Only lazily fetch JDs for jobs whose title fully matches at least
-                # ONE of the user's designations. With multi-designation chip input
-                # (e.g. "devops engineer, sre") we check each designation independently
-                # so a "DevOps Engineer" title correctly triggers a JD fetch.
-                desig_list = [d.strip() for d in self.designation.split(",") if d.strip()]
-                title_has_designation = bool(desig_list) and any(
-                    all(
-                        p in str(job.get("title", "")).lower()
-                        for p in d.split()
-                        if len(p) > 2
-                    )
-                    for d in desig_list
-                )
-                # Lazy JD fetch disabled in request path — handled by startup background thread.
-                # (Keeping lazy_jd_fetches variable for future use but _MAX_LAZY_FETCHES=0 disables it)
-                if (not job_description and job_source == "linkedin"
-                        and job.get("url") and title_has_designation):
-                    try:
-                        from jd_scraper import scrape_jd_text
-                        result = scrape_jd_text(job["url"], "linkedin")
-                        # scrape_jd_text returns (text, is_expired) tuple
-                        fetched = result[0] if isinstance(result, tuple) else (result or "")
-                        if fetched:
-                            job_description = fetched
-                            if job.get("id"):
-                                update_job_description(job["id"], fetched)
-                    except Exception:
-                        pass
-
-                # ── Detect "mirror skills": LinkedIn stores our own search
-                # keywords that happened to appear in the card title.
-                # These are NOT real JD skill requirements.
-                # NOTE: only apply to LinkedIn — Naukri provides real skill tags.
+                # Detect "mirror skills": LinkedIn sometimes echoes our search keywords
+                # as skill tags when there's no real JD data.
                 skills_are_mirrors = (
                     job_source == "linkedin"
-                    and 0 < len(job_required_skills) <= 2   # small set = likely just title keywords
-                    and all(s in self.skills for s in job_required_skills)
+                    and 0 < len(job_required) <= 2
+                    and all(s in self.skills for s in job_required)
                     and not job_description
                 )
 
-                # Build the broadest possible search text
-                # Use `or ""` on every field to guard against DB NULLs
                 search_text = " ".join(filter(None, [
                     job_title_lower,
-                    "" if skills_are_mirrors else " ".join(job_required_skills),
+                    "" if skills_are_mirrors else " ".join(job_required),
                     job_description.lower(),
                     job_snippet.lower(),
-                    str(job.get("company") or "").lower(),
                 ]))
 
-                def _skill_in_text(skill, text):
+                def _skill_match(skill, text):
                     return bool(_re.search(
                         r'(?<![a-z0-9])' + _re.escape(skill) + r'(?![a-z0-9])', text
                     ))
 
                 for user_skill in self.skills:
-                    tag_match = (
-                        not skills_are_mirrors and
-                        any(user_skill == req or (len(user_skill) > 2 and user_skill in req)
-                            for req in job_required_skills)
-                    )
-                    if tag_match or _skill_in_text(user_skill, search_text):
+                    tag_hit = (not skills_are_mirrors and
+                               any(user_skill == r or (len(user_skill) > 2 and user_skill in r)
+                                   for r in job_required))
+                    if tag_hit or _skill_match(user_skill, search_text):
                         matched_skills.append(user_skill)
                     else:
                         missing_skills.append(user_skill)
 
-                # ── Fallback: job returned by platform but has no real skill data ──
-                # When we have no JD text AND title matches designation,
-                # assume all user skills are potentially relevant (the platform
-                # itself returned this job for our query). Show it; user can verify.
+                # Fallback: no real JD data but title clearly matches designation
+                # → the platform returned this job for our query, so assume relevant.
+                # NOTE: LinkedIn snippets are metadata (title+company+date), NOT real content.
+                # So don't count snippet as "real data" for Naukri-only check.
                 no_real_data = (
-                    (len(job_required_skills) == 0 or skills_are_mirrors)
+                    (len(job_required) == 0 or skills_are_mirrors)
                     and not job_description
-                    and not job_snippet           # already str(…or""), safe to bool
                 )
-                # Generic title words that appear in almost every IT job — don't count these
-                # as meaningful designation matches (e.g. "engineer" from "desktop support engineer"
-                # should NOT match "DevOps Engineer").
-                _GENERIC_WORDS = {
-                    'engineer','senior','junior','lead','manager','developer','analyst',
-                    'specialist','associate','executive','officer','head','principal',
-                    'staff','architect','consultant','intern','trainee','fresher',
-                }
-                desig_words_for_match = [d.strip() for d in self.designation.split(",") if d.strip()]
-                title_matches_desig = bool(self.designation) and any(
-                    any(
-                        p in job_title_lower
-                        for p in d.split()
-                        if len(p) > 3 and p not in _GENERIC_WORDS
-                    )
-                    for d in desig_words_for_match
+                # Require ALL non-generic words of the designation to be in the title.
+                # "any" was too loose: "support" alone matched "Customer Support" for
+                # "desktop support engineer" searches.
+                def _desig_non_generic(d):
+                    return [p for p in d.split() if len(p) > 3 and p not in _GENERIC_WORDS]
+
+                title_matches_desig = bool(desig_list) and any(
+                    (ng := _desig_non_generic(d)) and all(p in job_title_lower for p in ng)
+                    for d in desig_list
                 )
                 if no_real_data and title_matches_desig:
                     matched_skills = list(self.skills)
                     missing_skills = []
 
-                # Score: proportional to % of skills matched, scaled to 75 pts
                 match_ratio = len(matched_skills) / len(self.skills) if self.skills else 0
                 score = int(match_ratio * 75)
 
+            # Designation score (0–25 pts)
             desig_score = 0
-            if self.designation:
-                _GENERIC_WORDS_SCORE = {
-                    'engineer','senior','junior','lead','manager','developer','analyst',
-                    'specialist','associate','executive','officer','head','principal',
-                    'staff','architect','consultant','intern','trainee','fresher',
-                }
-                for d in [x.strip() for x in self.designation.split(",") if x.strip()]:
+            if desig_list:
+                for d in desig_list:
                     d_parts = d.split()
                     if all(p in job_title_lower for p in d_parts):
                         desig_score = 25
                         break
-                    # Partial match: require at least 50% AND at least one non-generic word matches
-                    specific_parts = [p for p in d_parts if p not in _GENERIC_WORDS_SCORE and len(p) > 3]
-                    matched_specific = sum(1 for p in specific_parts if p in job_title_lower)
-                    matched_total = sum(1 for p in d_parts if p in job_title_lower)
+                    specific = [p for p in d_parts if p not in _GENERIC_WORDS and len(p) > 3]
                     if (len(d_parts) > 1
-                            and matched_total >= len(d_parts) / 2
-                            and (not specific_parts or matched_specific > 0)):
+                            and sum(1 for p in d_parts if p in job_title_lower) >= len(d_parts) / 2
+                            and (not specific or any(p in job_title_lower for p in specific))):
                         desig_score = max(desig_score, 10)
 
-            score += desig_score
-
-            job['match_score'] = min(score, 100)
+            score = min(score + desig_score, 100)
+            job['match_score']    = score
             job['matched_skills'] = matched_skills
             job['missing_skills'] = missing_skills
 
+            # Inclusion rules
             if not self.skills and not self.designation:
                 job['match_score'] = 100
                 filtered_jobs.append(job)
             elif not self.skills:
-                # No skills provided — show all jobs that passed location/experience filter.
-                # Score is designation-based only (0–25); include everything.
                 filtered_jobs.append(job)
-            elif job["match_score"] >= 35:
-                # Show jobs with >= 35 match — surfaces adjacent roles (e.g. SRE vs DevOps)
+            elif score >= 35:
                 filtered_jobs.append(job)
-            
-        # Sort jobs by match_score descending
-        filtered_jobs.sort(key=lambda j: (j.get('posted_days_ago') if j.get('posted_days_ago') is not None else 9999, -j.get('match_score', 0)))
-            
+
+        # Sort: newer first, then by score
+        filtered_jobs.sort(key=lambda j: (
+            j.get('posted_days_ago') if j.get('posted_days_ago') is not None else 9999,
+            -j.get('match_score', 0)
+        ))
+
         self.jobs = filtered_jobs
         self.summary = self._summarize_jobs()
         return self.summary

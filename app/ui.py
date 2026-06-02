@@ -9,7 +9,7 @@ from job_db import (init_db, mark_job_applied, get_job_applications_status, get_
                     mark_job_status, get_lifecycle_stats, bulk_mark_expired_from_text,
                     verify_new_jobs_for_expiry, upsert_google_user, get_user_by_id,
                     register_user, get_user_by_email, update_last_login, update_user_profile,
-                    _decode_cred, toggle_bookmark, get_bookmarked_jobs)
+                    _decode_cred, toggle_bookmark, get_bookmarked_jobs, upsert_saved_search)
 import os
 import threading
 import time
@@ -407,6 +407,8 @@ def index():
             except ValueError:
                 posted_within_days = None
 
+
+
         # Generate a unique search_id for this request so JS can poll status
         import uuid
         search_id = str(uuid.uuid4())
@@ -430,8 +432,13 @@ def index():
                 "naukri_password":   _decode_cred(_cu_row.get("naukri_password") or ""),
             }
         )
+        # Persist this search so the 6-hour scheduler can re-run it
+        try:
+            upsert_saved_search(designation_filter, skills, location_filter)
+        except Exception:
+            pass
         jobs = agent.get_jobs()
-        
+
         # Removed the strict local text fallback filter.
         # Platforms like Naukri return City/State names (e.g. "Bangalore"),
         # preventing a strict "india" substring match from working correctly.

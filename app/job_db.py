@@ -110,8 +110,94 @@ def init_db():
         except sqlite3.OperationalError:
             pass
 
+    # Saved searches table — stores queries to be re-run by the scheduler
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS saved_searches (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            designation TEXT NOT NULL,
+            skills TEXT NOT NULL,
+            location TEXT NOT NULL,
+            last_run_at TEXT,
+            run_count INTEGER DEFAULT 0,
+            UNIQUE(designation, skills, location)
+        )
+    ''')
+
     conn.commit()
     conn.close()
+
+
+# ── Saved searches ──────────────────────────────────────────────────────────
+
+def upsert_saved_search(designation: str, skills: list, location: str):
+    """Record a user search so the scheduler can re-run it every 6 hours."""
+    skills_str = ",".join(sorted(s.lower().strip() for s in skills if s.strip()))
+    designation = (designation or "").lower().strip()
+    location    = (location or "").lower().strip()
+    if not designation and not skills_str:
+        return
+    conn = get_conn()
+    now = datetime.utcnow().isoformat()
+    try:
+        conn.execute("""
+            INSERT INTO saved_searches (designation, skills, location, last_run_at, run_count)
+            VALUES (?, ?, ?, ?, 1)
+            ON CONFLICT(designation, skills, location) DO UPDATE SET
+                last_run_at = excluded.last_run_at,
+                run_count   = saved_searches.run_count + 1
+        """, (designation, skills_str, location, now))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_saved_searches() -> list:
+    """Return all saved searches sorted by most recently used."""
+    conn = get_conn()
+    try:
+        rows = conn.execute("""
+            SELECT id, designation, skills, location, last_run_at, run_count
+            FROM saved_searches ORDER BY last_run_at DESC
+        """).fetchall()
+        return [
+            {"id": r[0], "designation": r[1],
+             "skills": [s for s in r[2].split(",") if s],
+             "location": r[3], "last_run_at": r[4], "run_count": r[5]}
+            for r in rows
+        ]
+    finally:
+        conn.close()
+
+
+def remove_stale_jobs(max_age_hours: int = 72) -> int:
+    """
+    Remove jobs from the DB that:
+    - were NOT seen in the last <max_age_hours> hours (based on last_checked_at OR fetched_at)
+    - are active (not already expired/applied)
+    Returns number of rows deleted.
+    """
+    conn = get_conn()
+    try:
+        cutoff = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
+        result = conn.execute("""
+            DELETE FROM jobs
+            WHERE status NOT IN ('applied')
+            AND application_status = 'not_applied'
+            AND is_applied = 0
+            AND is_bookmarked = 0
+            AND MAX(COALESCE(last_checked_at,''), COALESCE(fetched_at,''))
+                < datetime(?, '-' || ? || ' hours')
+        """, (cutoff, str(max_age_hours)))
+        conn.commit()
+        deleted = result.rowcount
+        if deleted:
+            print(f"[scheduler] Removed {deleted} stale jobs (>{max_age_hours}h old)")
+        return deleted
+    except Exception as e:
+        print(f"[scheduler] remove_stale_jobs error: {e}")
+        return 0
+    finally:
+        conn.close()
 
 
 # ── User DB helpers ──────────────────────────────────────────────────────────
@@ -626,11 +712,6 @@ def get_new_jobs_count(hours: int = 24) -> int:
 def get_stale_jobs_to_check(limit: int = 20) -> list:
     """
     Return active LinkedIn jobs that need re-validation:
-    - never checked (last_checked_at IS NULL), OR
-    - last checked more than 1 hour ago
-    Prioritised: unchecked first, then oldest check time.
-    Return jobs that should be re-validated:
-    - active, have a URL
     - not checked in last 48h (or never checked)
     - not applied (no point checking those)
     """
@@ -644,15 +725,9 @@ def get_stale_jobs_to_check(limit: int = 20) -> list:
             AND source = 'LinkedIn'
             AND (
                 last_checked_at IS NULL
-                OR last_checked_at < datetime('now', '-1 hours')
-            )
-            ORDER BY
-                last_checked_at ASC NULLS FIRST
-            AND (
-                last_checked_at IS NULL
                 OR last_checked_at < datetime('now', '-48 hours')
             )
-            ORDER BY fetched_at ASC
+            ORDER BY last_checked_at ASC NULLS FIRST
             LIMIT ?
         """, (limit,)).fetchall()
         return [{"id": r[0], "url": r[1], "source": r[2],
@@ -690,11 +765,16 @@ def check_and_mark_expired_jobs(limit: int = 20) -> dict:
         for job in jobs:
             try:
                 time.sleep(1.5)
-                jd_text = scrape_jd_text(job["url"], job["source"].lower()) or ""
+                result = scrape_jd_text(job["url"], job["source"].lower())
+                # scrape_jd_text returns (text, is_expired) tuple
+                jd_text, already_expired = result if isinstance(result, tuple) else (result, False)
+                jd_text = jd_text or ""
                 jd_lower = jd_text.lower()
 
                 # Determine new status
-                if not jd_text or len(jd_text) < 30:
+                if already_expired:
+                    new_status = "expired"
+                elif not jd_text or len(jd_text) < 30:
                     new_status = "expired"   # page returned nothing — likely removed
                 elif any(sig in jd_lower for sig in _EXPIRED_SIGNALS):
                     new_status = "expired"
