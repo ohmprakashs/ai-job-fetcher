@@ -976,6 +976,15 @@ def autocomplete():
         "Database Administrator", "QA Engineer", "Test Automation Engineer",
         "Scrum Master", "Product Manager", "Technical Program Manager",
         "Engineering Manager", "CTO", "VP Engineering",
+        # IT Support / Helpdesk
+        "Desktop Support Engineer", "Desktop Support Technician",
+        "System Support Engineer", "IT Support Engineer", "IT Support Analyst",
+        "Helpdesk Engineer", "Helpdesk Analyst", "L1 Support Engineer",
+        "L2 Support Engineer", "L3 Support Engineer", "Technical Support Engineer",
+        "IT Administrator", "IT Analyst", "End User Computing Engineer",
+        "Field Support Engineer", "Service Desk Analyst", "NOC Engineer",
+        "Network Support Engineer", "Windows Administrator", "Linux Administrator",
+        "Active Directory Administrator", "Sysadmin", "Systems Engineer",
     ])
 
     SKILLS = sorted([
@@ -997,6 +1006,21 @@ def autocomplete():
         "Spark", "Hadoop", "Airflow", "dbt",
         "REST API", "GraphQL", "gRPC", "Microservices", "Serverless",
         "DevOps", "SRE", "Platform Engineering", "FinOps",
+        # Networking / IT Infrastructure
+        "Active Directory", "DNS", "DHCP", "LDAP", "Group Policy", "GPO",
+        "TCP/IP", "VPN", "Firewall", "Routing", "Switching", "VLAN",
+        "Office 365", "Microsoft 365", "Exchange Server", "SharePoint",
+        "Azure AD", "Azure Active Directory", "Intune", "SCCM",
+        "Windows 10", "Windows 11", "Windows Server 2019", "Windows Server 2022",
+        "PowerShell", "Bash", "Shell Scripting", "Batch Scripting",
+        "ITIL", "ITSM", "Incident Management", "Change Management",
+        "Virtualization", "Hyper-V", "VMware ESXi", "vSphere",
+        "Networking", "LAN", "WAN", "Wi-Fi", "VoIP",
+        "Ticketing System", "Remedy", "Zendesk", "Freshdesk",
+        "Backup & Recovery", "Veeam", "Symantec Backup Exec",
+        "Antivirus", "Endpoint Security", "CrowdStrike", "Sophos",
+        "Hardware Troubleshooting", "Desktop Support", "Remote Support",
+        "Printer Support", "Asset Management",
     ])
 
     LOCATIONS = sorted([
