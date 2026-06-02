@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Account Settings – AI Job Matcher</title>
+    <script>(function(){ var t=localStorage.getItem("theme"); if(t) document.documentElement.setAttribute("data-theme",t); })();</script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Inter', system-ui, sans-serif; background: #f3f4f6; color: #111827; min-height: 100vh; }
@@ -121,7 +122,16 @@
       .page-wrap { margin: 20px auto; }
       h1 { font-size: 1.2rem; }
     }
-  </style>
+  
+    /* Dark mode */
+    [data-theme="dark"] body { background: #0f1117 !important; color: #e2e8f0 !important; }
+    [data-theme="dark"] .card, [data-theme="dark"] .container { background: #1e2130 !important; border-color: #2e3548 !important; }
+    [data-theme="dark"] input { background: #252a3a !important; color: #e2e8f0 !important; border-color: #3a4258 !important; }
+    [data-theme="dark"] label { color: #94a3b8 !important; }
+    [data-theme="dark"] .navbar { background: #151923 !important; border-color: #2e3548 !important; }
+    [data-theme="dark"] .pw-hint { color: #64748b !important; }
+    [data-theme="dark"] h1, [data-theme="dark"] h2 { color: #e2e8f0 !important; }
+</style>
 </head>
 <body>
 

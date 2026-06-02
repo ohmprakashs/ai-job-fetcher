@@ -4,22 +4,85 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Job Matcher — Find Your Next Job</title>
+    <script>
+        // Apply theme before CSS renders to prevent flash
+        (function(){ var t=localStorage.getItem('theme'); if(t) document.documentElement.setAttribute('data-theme',t); })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        /* ─── CSS VARIABLES (Light / Dark) ─────────────── */
+        :root {
+            --bg:            #f3f2ee;
+            --bg-card:       #ffffff;
+            --bg-hero:       linear-gradient(135deg,#0a66c2 0%,#0d5aa7 100%);
+            --bg-sidebar:    #f8f7f5;
+            --bg-input:      #ffffff;
+            --bg-chip:       #e8f0fe;
+            --bg-hover:      #f5f5f5;
+            --bg-navbar:     #ffffff;
+            --bg-badge:      #e8f0fe;
+            --border:        #e0e0e0;
+            --border-input:  #d1d5db;
+            --text:          #1a1a1a;
+            --text-muted:    #555;
+            --text-light:    #888;
+            --text-chip:     #1d4ed8;
+            --brand:         #0a66c2;
+            --shadow:        rgba(0,0,0,.08);
+            --shadow-card:   rgba(0,0,0,.06);
+            --ac-bg:         #ffffff;
+            --ac-hover:      #f0f7ff;
+            --scrollbar-bg:  #f0f0f0;
+            --scrollbar-th:  #c0c0c0;
+            --stat-bg:       #f0f0f0;
+            --lo-badge-bg:   #ffffff;
+            --lo-badge-brd:  #e2e8f0;
+            --lo-badge-text: #334155;
+        }
+        [data-theme="dark"] {
+            --bg:            #0f1117;
+            --bg-card:       #1e2130;
+            --bg-hero:       linear-gradient(135deg,#1a3557 0%,#162d4a 100%);
+            --bg-sidebar:    #161b27;
+            --bg-input:      #252a3a;
+            --bg-chip:       #1e3a5f;
+            --bg-hover:      #252a3a;
+            --bg-navbar:     #151923;
+            --bg-badge:      #1e3a5f;
+            --border:        #2e3548;
+            --border-input:  #3a4258;
+            --text:          #e2e8f0;
+            --text-muted:    #94a3b8;
+            --text-light:    #64748b;
+            --text-chip:     #93c5fd;
+            --brand:         #60a5fa;
+            --shadow:        rgba(0,0,0,.4);
+            --shadow-card:   rgba(0,0,0,.3);
+            --ac-bg:         #1e2130;
+            --ac-hover:      #253050;
+            --scrollbar-bg:  #1e2130;
+            --scrollbar-th:  #3a4258;
+            --stat-bg:       #252a3a;
+            --lo-badge-bg:   #1e2130;
+            --lo-badge-brd:  #2e3548;
+            --lo-badge-text: #94a3b8;
+        }
+
         /* ─── RESET & BASE ─────────────────────────────── */
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         html, body {
             height: 100%;
-            overflow: hidden; /* prevent whole-page scroll */
+            overflow: hidden;
         }
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: #f3f2ee;
-            color: #1a1a1a;
+            background: var(--bg);
+            color: var(--text);
             font-size: 14px;
             display: flex;
             flex-direction: column;
+            transition: background .25s, color .25s;
         }
         /* form wraps everything — must be a flex child that grows */
         #main-form {
@@ -33,8 +96,8 @@
 
         /* ─── TOP NAVBAR ───────────────────────────────── */
         .navbar {
-            background: #fff;
-            border-bottom: 1px solid #e0e0e0;
+            background: var(--bg-navbar);
+            border-bottom: 1px solid var(--border);
             flex-shrink: 0;
             z-index: 100;
             padding: 0 24px;
@@ -50,7 +113,7 @@
         .brand {
             font-size: 1.35rem;
             font-weight: 700;
-            color: #0a66c2;
+            color: var(--brand);
             letter-spacing: -.02em;
             flex-shrink: 0;
         }
@@ -58,7 +121,7 @@
 
         /* ─── HERO SEARCH BAR ──────────────────────────── */
         .hero {
-            background: linear-gradient(135deg, #0a66c2 0%, #0d5aa7 100%);
+            background: var(--bg-hero);
             padding: 14px 24px;
             flex-shrink: 0;
         }
@@ -917,6 +980,68 @@
         flex-shrink: 0;
     }
     @keyframes lo-spin { to { transform: rotate(360deg); } }
+
+    /* ─── DARK MODE OVERRIDES ─────────────────────────── */
+    [data-theme="dark"] .search-bar,
+    [data-theme="dark"] .sb-field,
+    [data-theme="dark"] .ac-list,
+    [data-theme="dark"] .chip-input-wrap { background: var(--bg-input) !important; border-color: var(--border-input) !important; }
+    [data-theme="dark"] .search-bar input,
+    [data-theme="dark"] .chip-input-wrap input { color: var(--text) !important; background: transparent !important; }
+    [data-theme="dark"] .search-bar input::placeholder { color: var(--text-light) !important; }
+    [data-theme="dark"] .sb-field { border-right-color: var(--border) !important; }
+    [data-theme="dark"] .ac-item { color: var(--text) !important; }
+    [data-theme="dark"] .ac-item:hover,
+    [data-theme="dark"] .ac-item.active { background: var(--ac-hover) !important; }
+    [data-theme="dark"] .ac-list { background: var(--ac-bg) !important; border-color: var(--border) !important; }
+    [data-theme="dark"] .page-body { background: var(--bg) !important; }
+    [data-theme="dark"] .left-panel,
+    [data-theme="dark"] .filter-panel { background: var(--bg-sidebar) !important; border-color: var(--border) !important; }
+    [data-theme="dark"] .right-panel { background: var(--bg) !important; }
+    [data-theme="dark"] .job-card,
+    [data-theme="dark"] .common-card { background: var(--bg-card) !important; border-color: var(--border) !important; box-shadow: 0 1px 4px var(--shadow-card) !important; }
+    [data-theme="dark"] .job-card:hover,
+    [data-theme="dark"] .common-card:hover { background: var(--bg-hover) !important; box-shadow: 0 4px 16px var(--shadow) !important; }
+    [data-theme="dark"] .job-title { color: var(--brand) !important; }
+    [data-theme="dark"] .job-company,
+    [data-theme="dark"] .job-meta,
+    [data-theme="dark"] .job-location { color: var(--text-muted) !important; }
+    [data-theme="dark"] .skill-chip { background: var(--bg-chip) !important; color: var(--text-chip) !important; border-color: var(--border-input) !important; }
+    [data-theme="dark"] .skill-chip .chip-x { color: var(--text-muted) !important; }
+    [data-theme="dark"] .skill-chip .chip-x:hover { color: var(--text) !important; }
+    [data-theme="dark"] .stats-strip { background: var(--bg-sidebar) !important; border-color: var(--border) !important; }
+    [data-theme="dark"] .stat-box { background: var(--stat-bg) !important; border-color: var(--border) !important; }
+    [data-theme="dark"] .stat-label { color: var(--text-muted) !important; }
+    [data-theme="dark"] .filter-section-title { color: var(--text-muted) !important; border-color: var(--border) !important; }
+    [data-theme="dark"] .filter-row label { color: var(--text-muted) !important; }
+    [data-theme="dark"] input[type=range] { accent-color: var(--brand); }
+    [data-theme="dark"] .section-heading { color: var(--text-muted) !important; border-color: var(--border) !important; }
+    [data-theme="dark"] .source-badge { background: var(--bg-chip) !important; color: var(--text-chip) !important; }
+    [data-theme="dark"] .new-badge { background: #064e3b !important; color: #6ee7b7 !important; }
+    [data-theme="dark"] .applied-badge { background: #1e3a5f !important; color: #93c5fd !important; }
+    [data-theme="dark"] .sc-track { background: #2e3548 !important; }
+    [data-theme="dark"] .sc-bar-lbl,
+    [data-theme="dark"] .sc-recs h5 { color: var(--text-muted) !important; }
+    [data-theme="dark"] .sc-rec { color: var(--text-muted) !important; }
+    [data-theme="dark"] .sc-recs { border-color: var(--border) !important; }
+    [data-theme="dark"] .sc-tags .sc-tag-match { background: #064e3b !important; color: #6ee7b7 !important; }
+    [data-theme="dark"] .sc-tags .sc-tag-miss  { background: #450a0a !important; color: #fca5a5 !important; }
+    [data-theme="dark"] .sc-strong   { background: #064e3b !important; color: #6ee7b7 !important; }
+    [data-theme="dark"] .sc-moderate { background: #431407 !important; color: #fdba74 !important; }
+    [data-theme="dark"] .sc-weak     { background: #450a0a !important; color: #fca5a5 !important; }
+    [data-theme="dark"] .btn-outline { background: transparent !important; color: var(--brand) !important; border-color: var(--brand) !important; }
+    [data-theme="dark"] .btn-ghost   { background: var(--bg-hover) !important; color: var(--text-muted) !important; }
+    [data-theme="dark"] #lo-badge { background: var(--lo-badge-bg) !important; border-color: var(--lo-badge-brd) !important; color: var(--lo-badge-text) !important; }
+    [data-theme="dark"] .lo-spinner  { border-color: var(--border) !important; border-top-color: var(--brand) !important; }
+    [data-theme="dark"] .upload-area { background: var(--bg-sidebar) !important; border-color: var(--border-input) !important; color: var(--text-muted) !important; }
+    [data-theme="dark"] .resume-info { background: var(--bg-card) !important; border-color: var(--border) !important; color: var(--text-muted) !important; }
+    [data-theme="dark"] select,
+    [data-theme="dark"] input[type=text],
+    [data-theme="dark"] input[type=number] { background: var(--bg-input) !important; color: var(--text) !important; border-color: var(--border-input) !important; }
+    [data-theme="dark"] .scrollable::-webkit-scrollbar-track { background: var(--scrollbar-bg); }
+    [data-theme="dark"] .scrollable::-webkit-scrollbar-thumb { background: var(--scrollbar-th); }
+    [data-theme="dark"] *::-webkit-scrollbar-track { background: var(--scrollbar-bg); }
+    [data-theme="dark"] *::-webkit-scrollbar-thumb { background: var(--scrollbar-th); border-radius: 4px; }
     </style>
 </head>
 <body>
@@ -1045,6 +1170,15 @@
             <a href="/auto-apply" style="color:#0a66c2;font-weight:600;font-size:.88rem;">
                 🤖 Auto-Apply Bot
             </a>
+            <!-- Dark mode toggle -->
+            <button type="button" id="theme-toggle" onclick="toggleTheme()"
+                    style="background:none;border:1.5px solid var(--border);border-radius:20px;padding:4px 12px;
+                           cursor:pointer;font-size:.85rem;color:var(--text);display:flex;align-items:center;gap:5px;
+                           transition:background .2s,border-color .2s;"
+                    title="Toggle dark mode">
+                <span id="theme-icon">🌙</span>
+                <span id="theme-label">Dark</span>
+            </button>
             {% if current_user and current_user.is_authenticated %}
             <div style="display:flex;align-items:center;gap:8px;border-left:1px solid #e5e7eb;padding-left:16px;">
                 {% if current_user.picture %}
@@ -2431,5 +2565,27 @@ function showExpiredToast() {
     initSkillChips();
     initLocationChips();
 })();</script>
+
+<script>
+// ── Dark Mode ──────────────────────────────────────────
+(function() {
+    const saved = localStorage.getItem('theme') || 'light';
+    applyTheme(saved);
+})();
+
+function applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    const icon  = document.getElementById('theme-icon');
+    const label = document.getElementById('theme-label');
+    if (icon)  icon.textContent  = theme === 'dark' ? '☀️' : '🌙';
+    if (label) label.textContent = theme === 'dark' ? 'Light' : 'Dark';
+    localStorage.setItem('theme', theme);
+}
+
+function toggleTheme() {
+    const current = document.documentElement.getAttribute('data-theme') || 'light';
+    applyTheme(current === 'dark' ? 'light' : 'dark');
+}
+</script>
 </body>
 </html>
