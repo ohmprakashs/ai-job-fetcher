@@ -30,6 +30,10 @@ class JobAIAgent:
         Fire a background fetch (non-blocking) so the page loads instantly.
         The caller passes a search_id; clients poll /api/search-status/<id>
         to know when results are ready.
+
+        Skips fetching if a fetch for this same designation+location was
+        completed within the last 10 minutes (avoids redundant double-fetches
+        when the page auto-resubmits after the first fetch completes).
         """
         _skills = list(self.skills)
         _desig  = self.designation
@@ -38,9 +42,24 @@ class JobAIAgent:
         _days   = self.posted_within_days
         _creds  = credentials or {}
 
+        # Throttle: skip if we recently fetched for same designation+location
+        _cache_key = f"{_desig}|{_loc}"
+        _now = time.time()
+        _THROTTLE_SECS = 600  # 10 minutes
+        _skip_fetch = False
+        with _search_lock:
+            last = _search_state.get('__last__' + _cache_key, {})
+            if last.get('status') == 'done' and (_now - last.get('started', 0)) < _THROTTLE_SECS:
+                _skip_fetch = True
+                if search_id:
+                    _search_state[search_id] = {'status': 'done', 'count': last.get('count', 0), 'started': _now}
+
+        if _skip_fetch:
+            return self._filter_and_score(get_jobs_from_db())
+
         if search_id:
             with _search_lock:
-                _search_state[search_id] = {'status': 'running', 'count': 0, 'started': time.time()}
+                _search_state[search_id] = {'status': 'running', 'count': 0, 'started': _now}
 
         def _bg_fetch():
             try:
@@ -53,14 +72,19 @@ class JobAIAgent:
             except Exception as exc:
                 print(f"[agent] fetch error: {exc}")
                 count = 0
-            if search_id:
-                with _search_lock:
-                    _search_state[search_id] = {'status': 'done', 'count': count, 'started': _search_state.get(search_id, {}).get('started', 0)}
+            with _search_lock:
+                done_state = {'status': 'done', 'count': count, 'started': _now}
+                if search_id:
+                    _search_state[search_id] = done_state
+                _search_state['__last__' + _cache_key] = done_state
 
         threading.Thread(target=_bg_fetch, daemon=True).start()
 
         # Return cached jobs immediately (may be empty on first run)
         all_cached_jobs = get_jobs_from_db()
+        return self._filter_and_score(all_cached_jobs)
+
+    def _filter_and_score(self, all_cached_jobs):
         filtered_jobs = []
         lazy_jd_fetches = 0   # disabled — JD fetches now happen in startup background only
         _MAX_LAZY_FETCHES = 0  # set to 0 to keep request path fast
@@ -213,9 +237,22 @@ class JobAIAgent:
                     and not job_description
                     and not job_snippet           # already str(…or""), safe to bool
                 )
+                # Generic title words that appear in almost every IT job — don't count these
+                # as meaningful designation matches (e.g. "engineer" from "desktop support engineer"
+                # should NOT match "DevOps Engineer").
+                _GENERIC_WORDS = {
+                    'engineer','senior','junior','lead','manager','developer','analyst',
+                    'specialist','associate','executive','officer','head','principal',
+                    'staff','architect','consultant','intern','trainee','fresher',
+                }
+                desig_words_for_match = [d.strip() for d in self.designation.split(",") if d.strip()]
                 title_matches_desig = bool(self.designation) and any(
-                    any(p in job_title_lower for p in d.split() if len(p) > 2)
-                    for d in [x.strip() for x in self.designation.split(",") if x.strip()]
+                    any(
+                        p in job_title_lower
+                        for p in d.split()
+                        if len(p) > 3 and p not in _GENERIC_WORDS
+                    )
+                    for d in desig_words_for_match
                 )
                 if no_real_data and title_matches_desig:
                     matched_skills = list(self.skills)
@@ -227,13 +264,23 @@ class JobAIAgent:
 
             desig_score = 0
             if self.designation:
-                # Score against each individual designation; take the best match
+                _GENERIC_WORDS_SCORE = {
+                    'engineer','senior','junior','lead','manager','developer','analyst',
+                    'specialist','associate','executive','officer','head','principal',
+                    'staff','architect','consultant','intern','trainee','fresher',
+                }
                 for d in [x.strip() for x in self.designation.split(",") if x.strip()]:
                     d_parts = d.split()
                     if all(p in job_title_lower for p in d_parts):
                         desig_score = 25
                         break
-                    elif len(d_parts) > 1 and sum(1 for p in d_parts if p in job_title_lower) >= len(d_parts) / 2:
+                    # Partial match: require at least 50% AND at least one non-generic word matches
+                    specific_parts = [p for p in d_parts if p not in _GENERIC_WORDS_SCORE and len(p) > 3]
+                    matched_specific = sum(1 for p in specific_parts if p in job_title_lower)
+                    matched_total = sum(1 for p in d_parts if p in job_title_lower)
+                    if (len(d_parts) > 1
+                            and matched_total >= len(d_parts) / 2
+                            and (not specific_parts or matched_specific > 0)):
                         desig_score = max(desig_score, 10)
 
             score += desig_score

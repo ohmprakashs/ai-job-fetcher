@@ -1341,7 +1341,7 @@
         <div id="bg-refresh-banner" style="display:none;background:linear-gradient(135deg,#eff6ff,#dbeafe);border:1px solid #93c5fd;border-radius:8px;padding:10px 16px;margin-bottom:12px;align-items:center;gap:10px;font-size:.85rem;color:#1d4ed8;">
             <span style="font-size:1.1rem">🔄</span>
             <span id="bg-banner-text">Fetching fresh jobs from LinkedIn &amp; Naukri in background…</span>
-            <button onclick="location.reload()" style="margin-left:auto;padding:4px 12px;border-radius:5px;background:#1d4ed8;color:#fff;border:none;cursor:pointer;font-size:.8rem">Refresh</button>
+            <button onclick="var f=document.getElementById('main-form');if(f)f.submit();else location.reload();" style="margin-left:auto;padding:4px 12px;border-radius:5px;background:#1d4ed8;color:#fff;border:none;cursor:pointer;font-size:.8rem">Refresh</button>
         </div>
         {% endif %}
         <div class="results-header">
@@ -1534,21 +1534,33 @@
             var elapsed = 0;
             var elSpan = document.getElementById('fetch-elapsed');
             var interval = setInterval(function(){
-                elapsed++;
+                elapsed += 2;
                 if (elSpan) elSpan.textContent = '⏱ ' + elapsed + 's elapsed…';
                 fetch('/api/search-status/' + sid)
                     .then(function(r){ return r.json(); })
                     .then(function(d){
                         if (d.status === 'done') {
                             clearInterval(interval);
-                            if (elSpan) elSpan.textContent = '✅ Done! ' + (d.count||0) + ' jobs found. Refreshing…';
-                            setTimeout(function(){ location.reload(); }, 800);
+                            var cnt = d.count || 0;
+                            if (elSpan) elSpan.textContent = '✅ Done! ' + cnt + ' jobs found. Loading…';
+                            // Use form.submit() instead of location.reload() — avoids browser resubmit dialog
+                            setTimeout(function(){
+                                var form = document.getElementById('main-form');
+                                if (form) form.submit(); else location.reload();
+                            }, 600);
                         }
                     })
                     .catch(function(){});
             }, 2000);
-            // Safety auto-refresh at 120s
-            setTimeout(function(){ clearInterval(interval); location.reload(); }, 120000);
+            // Safety: at 130s use form.submit() as fallback
+            setTimeout(function(){
+                clearInterval(interval);
+                if (elSpan) elSpan.textContent = '⏱ Still searching… reloading now.';
+                setTimeout(function(){
+                    var form = document.getElementById('main-form');
+                    if (form) form.submit(); else location.reload();
+                }, 1000);
+            }, 130000);
         })();
         </script>
         {% else %}
@@ -1630,27 +1642,36 @@ function hideSearchOverlay() {
     var banner   = document.getElementById('bg-refresh-banner');
     var bannerTxt = document.getElementById('bg-banner-text');
     var searching = document.getElementById('searching-state');
-    // If there's a searching-state div, it has its own polling — skip here
+    // Searching-state has its own polling — skip banner here
     if (searching) return;
     if (banner) banner.style.display = 'flex';
     var elapsed = 0;
     var interval = setInterval(function(){
-        elapsed++;
+        elapsed += 2;
         fetch('/api/search-status/' + searchId)
             .then(function(r){ return r.json(); })
             .then(function(d){
                 if (d.status === 'done') {
                     clearInterval(interval);
-                    if (bannerTxt) bannerTxt.textContent = '✅ Fetch complete — ' + (d.count||0) + ' new jobs. Refreshing…';
-                    setTimeout(function(){ location.reload(); }, 1200);
+                    // ⚠️ DO NOT auto-reload here — that causes an infinite loop.
+                    // Instead, let the user decide to refresh.
+                    var cnt = d.count || 0;
+                    if (banner && bannerTxt) {
+                        bannerTxt.textContent = cnt > 0
+                            ? '✅ ' + cnt + ' fresh jobs fetched! Click Refresh to see them.'
+                            : '✅ Fetch complete. Click Refresh to reload.';
+                    }
+                    // Change the "Refresh" button to be more prominent
+                    var btn = banner ? banner.querySelector('button') : null;
+                    if (btn) { btn.style.background = '#16a34a'; btn.textContent = '🔄 Refresh Now'; }
                 } else {
-                    if (bannerTxt) bannerTxt.textContent = '🔄 Fetching jobs… (' + elapsed*2 + 's elapsed)';
+                    if (bannerTxt) bannerTxt.textContent = '🔄 Fetching fresh jobs from LinkedIn & Naukri… (' + elapsed + 's)';
                 }
             })
             .catch(function(){});
     }, 2000);
-    // Safety auto-refresh at 130s
-    setTimeout(function(){ clearInterval(interval); location.reload(); }, 130000);
+    // At 130s, just update button text — never auto-reload
+    setTimeout(function(){ clearInterval(interval); if (bannerTxt) bannerTxt.textContent = '⏱ Fetch still running in background. Refresh manually when ready.'; }, 130000);
 })();
 
 // ── Resume Upload ─────────────────────────────────────
