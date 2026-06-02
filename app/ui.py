@@ -388,7 +388,8 @@ def index():
         skills = [s.strip().lower() for s in raw_skills.replace('||', ',').split(',') if s.strip()]
 
         raw_location = request.form.get('location', '').strip()
-        location_filter = raw_location.split('||')[0].strip() if raw_location else ''
+        # Support multiple location chips (OR logic) — take all chips, not just first
+        location_filter = raw_location.strip() if raw_location else ''
 
         raw_desig = request.form.get('designation', '').strip()
         designation_filter = raw_desig.replace('||', ',').strip().lower()

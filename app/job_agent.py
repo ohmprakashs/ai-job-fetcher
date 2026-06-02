@@ -92,18 +92,33 @@ class JobAIAgent:
         """Filter and ATS-score DB jobs. NEVER makes HTTP requests."""
 
         # ── Pre-compute location expansion once ──────────────
+        # self.location may have multiple chips separated by "||"
+        # e.g. "Bangalore / Bengaluru||Karnataka"
+        # OR a single "City, State" like "Chennai, Tamil Nadu"
         expanded_locs = set()
         if self.location:
-            city = self.location.lower()  # always lowercase for case-insensitive match
-            if "," in city:
-                city = city.rsplit(",", 1)[0].strip()
-            expanded_locs = {city}
-            for part in city.split("/"):
-                p = part.strip()
-                if p:
-                    expanded_locs.add(p)
-            if "bangalore" in city or "bengaluru" in city:
-                expanded_locs.update(["bangalore", "bengaluru"])
+            # Split multiple location chips first
+            raw_chips = [c.strip() for c in self.location.split("||") if c.strip()]
+            for chip in raw_chips:
+                chip_lower = chip.lower()
+                # If "City, State" format — extract just the city part
+                if "," in chip_lower:
+                    city_part = chip_lower.rsplit(",", 1)[0].strip()
+                    state_part = chip_lower.rsplit(",", 1)[1].strip()
+                    expanded_locs.add(chip_lower)  # full "city, state"
+                    expanded_locs.add(city_part)
+                    expanded_locs.add(state_part)
+                else:
+                    city_part = chip_lower
+                    expanded_locs.add(chip_lower)
+                # Split by "/" for compound city names like "Bangalore / Bengaluru"
+                for part in chip_lower.split("/"):
+                    p = part.strip()
+                    if p:
+                        expanded_locs.add(p)
+                # Always treat bangalore/bengaluru as equivalent
+                if "bangalore" in chip_lower or "bengaluru" in chip_lower:
+                    expanded_locs.update(["bangalore", "bengaluru"])
 
         # ── Pre-compute designation words once ───────────────
         desig_list = [d.strip() for d in self.designation.split(",") if d.strip()]
