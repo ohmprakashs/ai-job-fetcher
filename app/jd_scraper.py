@@ -80,11 +80,6 @@ def scrape_jd_text(url, source):
     source = source.lower()
     try:
         if 'linkedin' in source:
-    if not url: return ""
-    text = ""
-    source = source.lower()
-    try:
-        if 'linkedin' in source:
             # 1) Try the unauthenticated guest API — returns full JD HTML without login
             job_id = _extract_linkedin_job_id(url)
             if job_id:
@@ -114,10 +109,6 @@ def scrape_jd_text(url, source):
                 except Exception:
                     pass
 
-            # Fallback: direct job page
-                except Exception:
-                    pass
-
             # 2) Fallback: direct job page (sometimes works for public/cached pages)
             if not text:
                 try:
@@ -139,10 +130,6 @@ def scrape_jd_text(url, source):
                     pass
 
         elif 'naukri' in source:
-                except Exception:
-                    pass
-                
-        elif 'naukri' in source:
             # Needs playwright because of React/SPA
             with sync_playwright() as p:
                 browser = p.chromium.launch(
@@ -163,17 +150,3 @@ def scrape_jd_text(url, source):
     except Exception as e:
         print(f"Failed to scrape JD from {url}: {e}")
     return text, is_expired
-
-                # Various Naukri description classes
-                selectors = [".job-desc", ".styles_JDC__...", ".styles_job-desc-container__..."]
-                try:
-                    page.wait_for_selector(".job-desc", timeout=5000)
-                    text = page.locator(".job-desc").inner_text()
-                except:
-                    # fallback get body
-                    text = page.locator("body").inner_text()
-                browser.close()
-    except Exception as e:
-        print(f"Failed to scrape JD from {url}: {e}")
-        pass
-    return text
