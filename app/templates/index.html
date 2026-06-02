@@ -1372,7 +1372,7 @@
                             {% if job.url %}onclick="window.open('{{ job.url }}','_blank')"{% endif %}>
                             {{ job.title }}
                         </div>
-                        {% if job.first_seen_at and job.first_seen_at[:10] >= (now_date | default('2000-01-01')) %}
+                        {% if job.posted_days_ago is not none and job.posted_days_ago <= 1 %}
                         <span style="background:#e0f2fe;color:#0369a1;font-size:.68rem;font-weight:800;
                                      padding:1px 8px;border-radius:20px;letter-spacing:.03em;">🆕 NEW</span>
                         {% endif %}

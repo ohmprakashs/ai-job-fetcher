@@ -461,11 +461,7 @@ def index():
     resume_path = os.path.join(_BASE_DIR, "..", "sample_cv.pdf")
     has_resume = os.path.exists(resume_path)
     applied_count = get_applied_count()
-    new_jobs_count = get_new_jobs_count()
-    now_date = datetime.utcnow().strftime('%Y-%m-%d')
     new_jobs_count = get_new_jobs_count(hours=24)
-    from datetime import timedelta
-    now_date = (datetime.utcnow() - timedelta(hours=24)).strftime('%Y-%m-%d')
 
     return render_template(
         'index.html',
@@ -481,7 +477,6 @@ def index():
         has_resume=has_resume,
         applied_count=applied_count,
         new_jobs_count=new_jobs_count,
-        now_date=now_date,
         current_user=_get_current_user(),
         search_id=search_id,
     )
