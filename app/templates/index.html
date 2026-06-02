@@ -1139,6 +1139,16 @@
 </head>
 <body>
 <div id="toast-container"></div>
+
+<!-- ═══════════ SEARCH LOADING OVERLAY ═══════════ -->
+<!-- Top progress bar (Google-style) -->
+<div id="lo-topbar"></div>
+<!-- Bottom-right floating badge -->
+<div id="lo-badge">
+    <div class="lo-spinner"></div>
+    <span id="lo-message">Searching jobs…</span>
+</div>
+
 <!-- Autocomplete dropdowns — placed at body root to escape all overflow:hidden -->
 <ul class="ac-list" id="ac-designation"></ul>
 <ul class="ac-list" id="ac-location"></ul>
