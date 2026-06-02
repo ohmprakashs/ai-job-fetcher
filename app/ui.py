@@ -424,21 +424,27 @@ def index():
         )
         # Pass stored social credentials so fetcher auto-logs in
         _cu_row = get_user_by_id(session.get("user_id") or 0) or {}
-        agent.fetch_and_summarize(
-            search_id=search_id,
-            credentials={
-                "linkedin_email":    _cu_row.get("linkedin_email") or "",
-                "linkedin_password": _decode_cred(_cu_row.get("linkedin_password") or ""),
-                "naukri_email":      _cu_row.get("naukri_email") or "",
-                "naukri_password":   _decode_cred(_cu_row.get("naukri_password") or ""),
-            }
-        )
+        try:
+            agent.fetch_and_summarize(
+                search_id=search_id,
+                credentials={
+                    "linkedin_email":    _cu_row.get("linkedin_email") or "",
+                    "linkedin_password": _decode_cred(_cu_row.get("linkedin_password") or ""),
+                    "naukri_email":      _cu_row.get("naukri_email") or "",
+                    "naukri_password":   _decode_cred(_cu_row.get("naukri_password") or ""),
+                }
+            )
+        except Exception as _e:
+            import traceback
+            print(f"[ERROR] fetch_and_summarize failed: {_e}")
+            traceback.print_exc()
         # Persist this search so the 6-hour scheduler can re-run it
         try:
             upsert_saved_search(designation_filter, skills, location_filter)
         except Exception:
             pass
         jobs = agent.get_jobs()
+        print(f"[SEARCH] desig={designation_filter!r} loc={location_filter!r} skills={skills} → {len(jobs)} jobs")
 
         # Removed the strict local text fallback filter.
         # Platforms like Naukri return City/State names (e.g. "Bangalore"),

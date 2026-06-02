@@ -60,7 +60,15 @@ class JobAIAgent:
                     _search_state[search_id] = {'status': 'done', 'count': last.get('count', 0), 'started': _now}
 
         if _skip_fetch:
-            return self._filter_and_score(get_jobs_from_db())
+            try:
+                all_cached = get_jobs_from_db()
+                print(f"[agent] skip_fetch: get_jobs_from_db returned {len(all_cached)} jobs")
+                return self._filter_and_score(all_cached)
+            except Exception as _e:
+                import traceback
+                print(f"[agent] ERROR (skip_fetch) in get_jobs_from_db/_filter_and_score: {_e}")
+                traceback.print_exc()
+                return {}
 
         if search_id:
             with _search_lock:
@@ -86,10 +94,19 @@ class JobAIAgent:
         threading.Thread(target=_bg_fetch, daemon=True).start()
 
         # Return cached DB results immediately (before bg fetch completes)
-        return self._filter_and_score(get_jobs_from_db())
+        try:
+            all_cached = get_jobs_from_db()
+            print(f"[agent] get_jobs_from_db returned {len(all_cached)} jobs")
+            return self._filter_and_score(all_cached)
+        except Exception as _e:
+            import traceback
+            print(f"[agent] ERROR in get_jobs_from_db/_filter_and_score: {_e}")
+            traceback.print_exc()
+            return {}
 
     def _filter_and_score(self, all_cached_jobs):
         """Filter and ATS-score DB jobs. NEVER makes HTTP requests."""
+        print(f"[agent] _filter_and_score: {len(all_cached_jobs)} input jobs, desig={self.designation!r}, loc={self.location!r}, skills={self.skills}")
 
         # ── Pre-compute location expansion once ──────────────
         # self.location may have multiple chips separated by "||"
