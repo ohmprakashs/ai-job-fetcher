@@ -1329,58 +1329,6 @@
         </div>
 
         <!-- Job cards -->
-        {% for job in jobs %}
-        {% set score = job.match_score %}
-        {% set score_cls = 'high' if score >= 75 else ('medium' if score >= 50 else 'low') %}
-        <div class="job-card {{ 'applied' if job.is_applied else '' }} {{ 'expired-card' if job.status == 'expired' else '' }}">
-            {% if job.status == 'expired' %}
-            <div style="background:#fee2e2;color:#991b1b;font-size:.72rem;font-weight:700;
-                        padding:4px 14px;letter-spacing:.04em;text-transform:uppercase;">
-                ⚠️ This job may no longer be accepting applications
-            </div>
-            {% endif %}
-            <div class="card-top">
-                <!-- Company logo placeholder -->
-                <div class="company-logo">
-                    {{ job.company[0] if job.company and job.company != 'N/A' else '?' }}
-                </div>
-
-                <div class="card-info">
-                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-                        <div class="job-title"
-                            {% if job.url %}onclick="window.open('{{ job.url }}','_blank')"{% endif %}>
-                            {{ job.title }}
-                        </div>
-                        {% if job.posted_days_ago is not none and job.posted_days_ago <= 1 %}
-                        <span style="background:#e0f2fe;color:#0369a1;font-size:.68rem;font-weight:800;
-                                     padding:1px 8px;border-radius:20px;letter-spacing:.03em;">🆕 NEW</span>
-                        {% elif job.posted_date and job.posted_date[:10] >= now_date %}
-                        <span style="background:#e0f2fe;color:#0369a1;font-size:.68rem;font-weight:800;
-                                     padding:1px 8px;border-radius:20px;letter-spacing:.03em;">🆕 NEW</span>
-                        {% endif %}
-                    </div>
-                    <div class="job-company">{{ job.company }}</div>
-
-                    <div class="job-meta-row">
-                        {% if job.location and job.location != 'N/A' %}
-                        <span>
-                            <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
-                            {{ job.location }}
-                        </span>
-                        {% endif %}
-
-                        {% if job.experience_min is not none %}
-                        <span>
-                            <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 3l-4 4-4-4"/></svg>
-                            {% if job.experience_max is not none and job.experience_min != job.experience_max %}
-                                {{ job.experience_min }}–{{ job.experience_max }} Yrs
-                            {% else %}
-                                {{ job.experience_min }} Yrs
-                            {% endif %}
-                        </span>
-                        {% endif %}
-
-
         <!-- Job cards -->
         {% for job in jobs %}
         {% set score = job.match_score %}
