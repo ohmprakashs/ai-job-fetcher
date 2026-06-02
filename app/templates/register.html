@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Create Account — AI Job Matcher</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    min-height: 100vh;
+    background: linear-gradient(135deg, #0a66c2 0%, #0d47a1 50%, #1a237e 100%);
+    display: flex; align-items: center; justify-content: center; padding: 16px;
+  }
+  .card {
+    background: #fff; border-radius: 20px; padding: 40px 36px;
+    width: 100%; max-width: 440px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.25);
+  }
+  .logo { font-size: 2.4rem; text-align: center; margin-bottom: 6px; }
+  .brand { font-size: 1.4rem; font-weight: 800; color: #0a66c2; text-align: center; margin-bottom: 4px; }
+  .tagline { font-size: .82rem; color: #6b7280; text-align: center; margin-bottom: 28px; }
+  .alert { border-radius: 8px; padding: 10px 14px; margin-bottom: 18px; font-size: .83rem; }
+  .alert-error   { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  label { display: block; font-size: .82rem; font-weight: 600; color: #374151; margin-bottom: 5px; }
+  .opt-label { font-weight: 400; color: #9ca3af; font-size: .75rem; margin-left: 4px; }
+  input[type=email], input[type=password], input[type=text], input[type=tel] {
+    width: 100%; padding: 11px 14px; border: 1.5px solid #d1d5db; border-radius: 10px;
+    font-family: inherit; font-size: .93rem; outline: none; transition: border-color .2s;
+    margin-bottom: 16px;
+  }
+  input:focus { border-color: #0a66c2; box-shadow: 0 0 0 3px rgba(10,102,194,.1); }
+  .pw-hint { font-size: .74rem; color: #9ca3af; margin-top: -12px; margin-bottom: 14px; }
+  .pw-strength { height: 4px; border-radius: 2px; margin-top: -13px; margin-bottom: 14px; background: #e5e7eb; overflow: hidden; }
+  .pw-strength-bar { height: 100%; width: 0; border-radius: 2px; transition: width .3s, background .3s; }
+  .btn-primary {
+    width: 100%; padding: 13px; background: #0a66c2; color: #fff;
+    border: none; border-radius: 10px; font-family: inherit; font-size: .97rem;
+    font-weight: 700; cursor: pointer; transition: background .2s; margin-top: 4px;
+  }
+  .btn-primary:hover { background: #085396; }
+  .divider { display: flex; align-items: center; gap: 10px; margin: 22px 0; }
+  .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: #e5e7eb; }
+  .divider span { font-size: .76rem; color: #9ca3af; white-space: nowrap; }
+  .google-btn {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    width: 100%; padding: 12px 20px; background: #fff; color: #374151;
+    border: 1.5px solid #d1d5db; border-radius: 10px; font-family: inherit;
+    font-size: .93rem; font-weight: 600; text-decoration: none; cursor: pointer;
+    transition: border-color .2s, box-shadow .2s;
+  }
+  .google-btn:hover { border-color: #0a66c2; box-shadow: 0 0 0 3px rgba(10,102,194,.1); }
+  .google-btn.disabled { opacity: .45; cursor: not-allowed; pointer-events: none; }
+  .google-icon { width: 20px; height: 20px; flex-shrink: 0; }
+  .switch-link { text-align: center; margin-top: 22px; font-size: .83rem; color: #6b7280; }
+  .switch-link a { color: #0a66c2; font-weight: 700; text-decoration: none; }
+  .switch-link a:hover { text-decoration: underline; }
+  .terms { font-size: .74rem; color: #9ca3af; text-align: center; margin-top: 14px; line-height: 1.5; }
+  @media (max-width: 480px) {
+    .card { padding: 28px 20px; }
+    .field-row { grid-template-columns: 1fr; gap: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">🤖</div>
+  <div class="brand">Create Account</div>
+  <div class="tagline">Join AI Job Matcher — find and apply to jobs smarter</div>
+
+  {% if error %}
+  <div class="alert alert-error">⚠️ {{ error }}</div>
+  {% endif %}
+
+  <form method="POST" action="/register" autocomplete="on" id="reg-form">
+    <div class="field-row">
+      <div>
+        <label for="name">Full name</label>
+        <input type="text" id="name" name="name" placeholder="John Smith"
+               value="{{ prefill.name or '' }}" required autocomplete="name">
+      </div>
+      <div>
+        <label for="phone">Phone <span class="opt-label">(optional)</span></label>
+        <input type="tel" id="phone" name="phone" placeholder="+91 98765 43210"
+               value="{{ prefill.phone or '' }}" autocomplete="tel">
+      </div>
+    </div>
+
+    <label for="email">Email address</label>
+    <input type="email" id="email" name="email" placeholder="you@example.com"
+           value="{{ prefill.email or '' }}" required autocomplete="email">
+
+    <label for="password">Password</label>
+    <input type="password" id="password" name="password" placeholder="Min 8 characters"
+           required autocomplete="new-password" id="pw-input">
+    <div class="pw-strength"><div class="pw-strength-bar" id="pw-bar"></div></div>
+    <div class="pw-hint" id="pw-hint"></div>
+
+    <label for="confirm_password">Confirm password</label>
+    <input type="password" id="confirm_password" name="confirm_password"
+           placeholder="Re-enter your password" required autocomplete="new-password">
+
+    <button type="submit" class="btn-primary">Create Account</button>
+  </form>
+
+  <div class="divider"><span>or sign up with</span></div>
+
+  {% if sso_enabled %}
+  <a href="{{ url_for('google.login') }}" class="google-btn">
+  {% else %}
+  <a href="#" class="google-btn disabled">
+  {% endif %}
+    <svg class="google-icon" viewBox="0 0 48 48">
+      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.35-8.16 2.35-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+    </svg>
+    Continue with Google
+  </a>
+
+  <div class="switch-link">
+    Already have an account? <a href="/login">Sign in</a>
+  </div>
+  <div class="terms">By creating an account you agree to use this service responsibly.</div>
+</div>
+
+<script>
+(function(){
+  var pw = document.getElementById('password');
+  var bar = document.getElementById('pw-bar');
+  var hint = document.getElementById('pw-hint');
+  if (!pw) return;
+  pw.addEventListener('input', function(){
+    var v = pw.value;
+    var score = 0;
+    if (v.length >= 8) score++;
+    if (/[A-Z]/.test(v)) score++;
+    if (/[0-9]/.test(v)) score++;
+    if (/[^A-Za-z0-9]/.test(v)) score++;
+    var colors = ['#ef4444','#f97316','#eab308','#22c55e'];
+    var labels = ['Weak','Fair','Good','Strong'];
+    var w = v.length ? (score / 4 * 100) + '%' : '0';
+    bar.style.width = w;
+    bar.style.background = v.length ? colors[score-1] || colors[0] : '';
+    hint.textContent = v.length >= 1 ? labels[score-1] || 'Weak' : '';
+    hint.style.color = v.length ? colors[score-1] || colors[0] : '';
+  });
+
+  // Client-side confirm password check
+  document.getElementById('reg-form').addEventListener('submit', function(e){
+    var p1 = document.getElementById('password').value;
+    var p2 = document.getElementById('confirm_password').value;
+    if (p1 !== p2) {
+      e.preventDefault();
+      alert('Passwords do not match.');
+    }
+  });
+})();
+</script>
+</body>
+</html>
