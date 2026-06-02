@@ -561,18 +561,6 @@ def update_application_status(job_id: int, application_status: str):
         conn.close()
 
 
-def get_new_jobs_count() -> int:
-    """Count jobs posted today or yesterday (posted_days_ago <= 1)."""
-    conn = get_conn()
-    try:
-        return conn.execute("""
-            SELECT COUNT(*) FROM jobs
-            WHERE status='active'
-            AND (
-                posted_days_ago <= 1
-                OR (posted_date IS NOT NULL AND posted_date >= date('now', '-1 day'))
-            )
-        """).fetchone()[0]
 def get_new_jobs_count(hours: int = 24) -> int:
     """Count jobs added in the last N hours (uses first_seen_at)."""
     conn = get_conn()
