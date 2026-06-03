@@ -106,6 +106,10 @@ class JobAIAgent:
 
     def _filter_and_score(self, all_cached_jobs):
         """Filter and ATS-score DB jobs. NEVER makes HTTP requests."""
+        # If user provided no search criteria at all — return nothing
+        if not self.designation and not self.skills and not self.location:
+            return []
+
         print(f"[agent] _filter_and_score: {len(all_cached_jobs)} input jobs, desig={self.designation!r}, loc={self.location!r}, skills={self.skills}")
 
         # ── Pre-compute location expansion once ──────────────

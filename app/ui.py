@@ -388,7 +388,6 @@ def index():
         skills = [s.strip().lower() for s in raw_skills.replace('||', ',').split(',') if s.strip()]
 
         raw_location = request.form.get('location', '').strip()
-        # Support multiple location chips (OR logic) — take all chips, not just first
         location_filter = raw_location.strip() if raw_location else ''
 
         raw_desig = request.form.get('designation', '').strip()
@@ -408,49 +407,46 @@ def index():
             except ValueError:
                 posted_within_days = None
 
+        # Require at least one search field — show nothing if all are blank
+        if not designation_filter and not skills and not location_filter:
+            did_submit = False  # treat as if no search was done
+        else:
+            # Generate a unique search_id for this request so JS can poll status
+            import uuid
+            search_id = str(uuid.uuid4())
+            session['last_search_id'] = search_id
 
-
-        # Generate a unique search_id for this request so JS can poll status
-        import uuid
-        search_id = str(uuid.uuid4())
-        session['last_search_id'] = search_id
-
-        agent = JobAIAgent(
-            skills,
-            location=location_filter,
-            designation=designation_filter,
-            experience_years=experience_years,
-            posted_within_days=posted_within_days,
-        )
-        # Pass stored social credentials so fetcher auto-logs in
-        _cu_row = get_user_by_id(session.get("user_id") or 0) or {}
-        try:
-            agent.fetch_and_summarize(
-                search_id=search_id,
-                credentials={
-                    "linkedin_email":    _cu_row.get("linkedin_email") or "",
-                    "linkedin_password": _decode_cred(_cu_row.get("linkedin_password") or ""),
-                    "naukri_email":      _cu_row.get("naukri_email") or "",
-                    "naukri_password":   _decode_cred(_cu_row.get("naukri_password") or ""),
-                }
+            agent = JobAIAgent(
+                skills,
+                location=location_filter,
+                designation=designation_filter,
+                experience_years=experience_years,
+                posted_within_days=posted_within_days,
             )
-        except Exception as _e:
-            import traceback
-            print(f"[ERROR] fetch_and_summarize failed: {_e}")
-            traceback.print_exc()
-        # Persist this search so the 6-hour scheduler can re-run it
-        try:
-            upsert_saved_search(designation_filter, skills, location_filter)
-        except Exception:
-            pass
-        jobs = agent.get_jobs()
-        print(f"[SEARCH] desig={designation_filter!r} loc={location_filter!r} skills={skills} → {len(jobs)} jobs")
-
-        # Removed the strict local text fallback filter.
-        # Platforms like Naukri return City/State names (e.g. "Bangalore"),
-        # preventing a strict "india" substring match from working correctly.
-        
-        common_jobs = find_common_jobs(jobs)
+            # Pass stored social credentials so fetcher auto-logs in
+            _cu_row = get_user_by_id(session.get("user_id") or 0) or {}
+            try:
+                agent.fetch_and_summarize(
+                    search_id=search_id,
+                    credentials={
+                        "linkedin_email":    _cu_row.get("linkedin_email") or "",
+                        "linkedin_password": _decode_cred(_cu_row.get("linkedin_password") or ""),
+                        "naukri_email":      _cu_row.get("naukri_email") or "",
+                        "naukri_password":   _decode_cred(_cu_row.get("naukri_password") or ""),
+                    }
+                )
+            except Exception as _e:
+                import traceback
+                print(f"[ERROR] fetch_and_summarize failed: {_e}")
+                traceback.print_exc()
+            # Persist this search so the 6-hour scheduler can re-run it
+            try:
+                upsert_saved_search(designation_filter, skills, location_filter)
+            except Exception:
+                pass
+            jobs = agent.get_jobs()
+            print(f"[SEARCH] desig={designation_filter!r} loc={location_filter!r} skills={skills} → {len(jobs)} jobs")
+            common_jobs = find_common_jobs(jobs)
         
     # Enrich jobs with applied status from DB
     applied_status_map = get_job_applications_status()
