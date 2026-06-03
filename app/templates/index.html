@@ -2117,7 +2117,7 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
             hiddenId: 'location-hidden',
             listId:   'ac-location',
             getItems: function(){ return AC.locations || []; },
-            noCommaTrigger: true  // location values contain commas e.g. "Chennai, Tamil Nadu"
+            noCommaTrigger: false  // location values no longer contain commas
         });
     }
 

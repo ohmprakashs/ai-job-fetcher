@@ -110,24 +110,13 @@ class JobAIAgent:
 
         # ── Pre-compute location expansion once ──────────────
         # self.location may have multiple chips separated by "||"
-        # e.g. "Bangalore / Bengaluru||Karnataka"
-        # OR a single "City, State" like "Chennai, Tamil Nadu"
+        # e.g. "Bangalore / Bengaluru||Chennai"
         expanded_locs = set()
         if self.location:
-            # Split multiple location chips first
             raw_chips = [c.strip() for c in self.location.split("||") if c.strip()]
             for chip in raw_chips:
                 chip_lower = chip.lower()
-                # If "City, State" format — extract just the city part
-                if "," in chip_lower:
-                    city_part = chip_lower.rsplit(",", 1)[0].strip()
-                    state_part = chip_lower.rsplit(",", 1)[1].strip()
-                    expanded_locs.add(chip_lower)  # full "city, state"
-                    expanded_locs.add(city_part)
-                    expanded_locs.add(state_part)
-                else:
-                    city_part = chip_lower
-                    expanded_locs.add(chip_lower)
+                expanded_locs.add(chip_lower)
                 # Split by "/" for compound city names like "Bangalore / Bengaluru"
                 for part in chip_lower.split("/"):
                     p = part.strip()
