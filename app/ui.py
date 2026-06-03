@@ -1034,13 +1034,15 @@ def autocomplete():
         "Engineering Manager", "CTO", "VP Engineering",
         # IT Support / Helpdesk
         "Desktop Support Engineer", "Desktop Support Technician",
+        "System Engineer", "Systems Engineer",
         "System Support Engineer", "IT Support Engineer", "IT Support Analyst",
-        "Helpdesk Engineer", "Helpdesk Analyst", "L1 Support Engineer",
-        "L2 Support Engineer", "L3 Support Engineer", "Technical Support Engineer",
+        "Help Desk Engineer", "Help Desk Analyst",
+        "L1 Support Engineer", "L2 Support Engineer", "L3 Support Engineer",
+        "Technical Support Engineer",
         "IT Administrator", "IT Analyst", "End User Computing Engineer",
         "Field Support Engineer", "Service Desk Analyst", "NOC Engineer",
         "Network Support Engineer", "Windows Administrator", "Linux Administrator",
-        "Active Directory Administrator", "Sysadmin", "Systems Engineer",
+        "Active Directory Administrator", "Sysadmin",
     ])
 
     SKILLS = sorted([
@@ -1050,7 +1052,7 @@ def autocomplete():
         "AWS", "GCP", "Azure", "OpenStack", "VMware",
         "CI/CD", "Jenkins", "GitHub Actions", "GitLab CI", "CircleCI", "ArgoCD",
         "Prometheus", "Grafana", "Datadog", "New Relic", "ELK Stack", "Splunk",
-        "PagerDuty", "ServiceNow", "OpsGenie",
+        "PagerDuty", "ServiceNow", "Opsgenie",
         "Linux", "Ubuntu", "CentOS", "Windows Server", "macOS",
         "Nginx", "Apache", "HAProxy", "Istio", "Envoy",
         "PostgreSQL", "MySQL", "MongoDB", "Redis", "Elasticsearch", "Cassandra",
