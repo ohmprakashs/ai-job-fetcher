@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Billing & Usage</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f7f9fc; color: #0f172a; }
+        .navbar { background: #fff; border-bottom: 1px solid #e2e8f0; padding: 0 24px; }
+        .navbar-inner { max-width: 1100px; margin: 0 auto; height: 56px; display: flex; align-items: center; gap: 16px; }
+        .brand { font-weight: 800; color: #0a66c2; text-decoration: none; font-size: 1.1rem; }
+        .nav-link { margin-left: auto; color: #0a66c2; text-decoration: none; font-weight: 600; }
+
+        .container { max-width: 880px; margin: 24px auto; padding: 0 20px; }
+        .title { font-size: 1.6rem; font-weight: 800; margin-bottom: 16px; }
+
+        .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 16px; }
+        .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; }
+        .label { color: #64748b; font-size: 0.82rem; margin-bottom: 6px; }
+        .value { font-size: 1.4rem; font-weight: 800; }
+
+        .status { margin: 16px 0; padding: 12px 14px; border-radius: 10px; border: 1px solid; }
+        .status.ok { background: #ecfdf5; color: #166534; border-color: #86efac; }
+        .status.warn { background: #fef2f2; color: #991b1b; border-color: #fca5a5; }
+
+        .actions { margin-top: 18px; display: flex; gap: 12px; flex-wrap: wrap; }
+        .btn { display: inline-block; padding: 10px 16px; border-radius: 10px; text-decoration: none; font-weight: 700; }
+        .btn-primary { background: #0a66c2; color: #fff; }
+        .btn-secondary { background: #e2e8f0; color: #0f172a; }
+
+        .meta { color: #64748b; font-size: 0.9rem; margin-top: 10px; }
+
+        @media (max-width: 760px) {
+            .grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="navbar-inner">
+            <a class="brand" href="/" title="Go to Home">🤖 AI Job Matcher</a>
+            <a class="nav-link" href="/account-settings">⚙️ Settings</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <h1 class="title">Billing & Daily Usage</h1>
+
+        <div class="grid">
+            <div class="card">
+                <div class="label">Plan</div>
+                <div class="value" style="text-transform:capitalize;">{{ usage_plan }}</div>
+            </div>
+            <div class="card">
+                <div class="label">Used Today</div>
+                <div class="value">{{ usage_daily_count }}</div>
+            </div>
+            <div class="card">
+                <div class="label">Daily Limit</div>
+                <div class="value">{{ usage_daily_limit }}</div>
+            </div>
+        </div>
+
+        {% if usage_blocked %}
+        <div class="status warn">Daily limit reached. Upgrade to continue searching today.</div>
+        {% else %}
+        <div class="status ok">You can run {{ usage_remaining }} more search request(s) today.</div>
+        {% endif %}
+
+        {% if paid_until %}
+        <div class="meta">Paid plan active until: <strong>{{ paid_until }}</strong></div>
+        {% endif %}
+
+        <div class="actions">
+            {% if payment_link_url %}
+            <a class="btn btn-primary" href="{{ payment_link_url }}?user={{ username }}" target="_blank" rel="noopener">💳 Upgrade Plan</a>
+            {% else %}
+            <a class="btn btn-primary" href="/payment/success?user={{ username }}{% if payment_success_token %}&token={{ payment_success_token }}{% endif %}">✅ Simulate Payment Success</a>
+            {% endif %}
+            <a class="btn btn-secondary" href="/">← Back to Search</a>
+        </div>
+
+        <div class="meta">Production note: connect your payment provider webhook to /payment/success after signature verification.</div>
+    </div>
+</body>
+</html>

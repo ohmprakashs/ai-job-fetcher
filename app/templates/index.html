@@ -4,85 +4,22 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Job Matcher — Find Your Next Job</title>
-    <script>
-        // Apply theme before CSS renders to prevent flash
-        (function(){ var t=localStorage.getItem('theme'); if(t) document.documentElement.setAttribute('data-theme',t); })();
-    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        /* ─── CSS VARIABLES (Light / Dark) ─────────────── */
-        :root {
-            --bg:            #f3f2ee;
-            --bg-card:       #ffffff;
-            --bg-hero:       linear-gradient(135deg,#0a66c2 0%,#0d5aa7 100%);
-            --bg-sidebar:    #f8f7f5;
-            --bg-input:      #ffffff;
-            --bg-chip:       #e8f0fe;
-            --bg-hover:      #f5f5f5;
-            --bg-navbar:     #ffffff;
-            --bg-badge:      #e8f0fe;
-            --border:        #e0e0e0;
-            --border-input:  #d1d5db;
-            --text:          #1a1a1a;
-            --text-muted:    #555;
-            --text-light:    #888;
-            --text-chip:     #1d4ed8;
-            --brand:         #0a66c2;
-            --shadow:        rgba(0,0,0,.08);
-            --shadow-card:   rgba(0,0,0,.06);
-            --ac-bg:         #ffffff;
-            --ac-hover:      #f0f7ff;
-            --scrollbar-bg:  #f0f0f0;
-            --scrollbar-th:  #c0c0c0;
-            --stat-bg:       #f0f0f0;
-            --lo-badge-bg:   #ffffff;
-            --lo-badge-brd:  #e2e8f0;
-            --lo-badge-text: #334155;
-        }
-        [data-theme="dark"] {
-            --bg:            #0f1117;
-            --bg-card:       #1e2130;
-            --bg-hero:       linear-gradient(135deg,#1a3557 0%,#162d4a 100%);
-            --bg-sidebar:    #161b27;
-            --bg-input:      #252a3a;
-            --bg-chip:       #1e3a5f;
-            --bg-hover:      #252a3a;
-            --bg-navbar:     #151923;
-            --bg-badge:      #1e3a5f;
-            --border:        #2e3548;
-            --border-input:  #3a4258;
-            --text:          #e2e8f0;
-            --text-muted:    #94a3b8;
-            --text-light:    #64748b;
-            --text-chip:     #93c5fd;
-            --brand:         #60a5fa;
-            --shadow:        rgba(0,0,0,.4);
-            --shadow-card:   rgba(0,0,0,.3);
-            --ac-bg:         #1e2130;
-            --ac-hover:      #253050;
-            --scrollbar-bg:  #1e2130;
-            --scrollbar-th:  #3a4258;
-            --stat-bg:       #252a3a;
-            --lo-badge-bg:   #1e2130;
-            --lo-badge-brd:  #2e3548;
-            --lo-badge-text: #94a3b8;
-        }
-
         /* ─── RESET & BASE ─────────────────────────────── */
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         html, body {
             height: 100%;
-            overflow: hidden;
+            overflow: hidden; /* prevent whole-page scroll */
         }
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: var(--bg);
-            color: var(--text);
+            background: #f3f2ee;
+            color: #1a1a1a;
             font-size: 14px;
             display: flex;
             flex-direction: column;
-            transition: background .25s, color .25s;
         }
         /* form wraps everything — must be a flex child that grows */
         #main-form {
@@ -96,8 +33,8 @@
 
         /* ─── TOP NAVBAR ───────────────────────────────── */
         .navbar {
-            background: var(--bg-navbar);
-            border-bottom: 1px solid var(--border);
+            background: #fff;
+            border-bottom: 1px solid #e0e0e0;
             flex-shrink: 0;
             z-index: 100;
             padding: 0 24px;
@@ -113,7 +50,7 @@
         .brand {
             font-size: 1.35rem;
             font-weight: 700;
-            color: var(--brand);
+            color: #0a66c2;
             letter-spacing: -.02em;
             flex-shrink: 0;
         }
@@ -121,7 +58,7 @@
 
         /* ─── HERO SEARCH BAR ──────────────────────────── */
         .hero {
-            background: var(--bg-hero);
+            background: linear-gradient(135deg, #0a66c2 0%, #0d5aa7 100%);
             padding: 14px 24px;
             flex-shrink: 0;
         }
@@ -196,108 +133,23 @@
             display: flex;
             align-items: center;
             gap: 8px;
+            border-left: 3px solid transparent;
         }
-        .ac-item:hover, .ac-item.active { background: #f0f7ff; color: #0a66c2; }
-        .ac-item mark { background: none; color: #0a66c2; font-weight: 700; }
-        /* skill tag chips inside the skills input wrap */
-        .skill-tags-wrap {
-            display: flex;
-            flex-wrap: wrap;
-            align-items: center;
-            gap: 4px;
-            flex: 2;
-            padding: 6px 0;
-            min-width: 0;
-        }
-        .skill-tag-chip {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            background: #e8f3ff;
+        .ac-item:hover { background: #f0f7ff; color: #0a66c2; }
+        .ac-item.active {
+            background: #dbeafe;
             color: #0a66c2;
-            border-radius: 20px;
-            padding: 3px 10px 3px 10px;
-            font-size: .78rem;
-            font-weight: 600;
-            white-space: nowrap;
-            cursor: default;
-        }
-        .skill-tag-chip .rm { cursor: pointer; font-size: .85rem; opacity: .7; margin-left: 2px; }
-        .skill-tag-chip .rm:hover { opacity: 1; }
-        #skill-type-input {
-            border: none; outline: none; font-family: inherit; font-size: .9rem;
-            color: #1a1a1a; background: transparent; min-width: 120px; padding: 4px 0;
-        }
-        .sb-btn {
-            background: #0a66c2;
-            color: #fff;
-            font-size: 1.1rem;
+            border-left-color: #0a66c2;
             font-weight: 700;
-            margin-bottom: 2px;
         }
-        .hero p { color: rgba(255,255,255,.75); font-size: .8rem; margin-bottom: 10px; }
-
-        .search-bar {
-            display: flex;
-            gap: 0;
-            background: #fff;
-            border-radius: 6px;
-            overflow: visible;        /* must NOT be hidden — clips autocomplete dropdowns */
-            box-shadow: 0 2px 12px rgba(0,0,0,.18);
-            /* keep rounded corners via outline clip on the box itself */
-            clip-path: none;
+        .ac-item.active::after {
+            content: "Press Enter";
+            margin-left: auto;
+            font-size: .7rem;
+            color: #0a66c2;
+            opacity: .8;
+            font-weight: 600;
         }
-        /* Apply border-radius to first/last children instead of overflow:hidden on parent */
-        .search-bar .sb-field:first-child  { border-radius: 6px 0 0 6px; overflow: visible; }
-        .search-bar .sb-btn                { border-radius: 0 6px 6px 0; }
-        .search-bar .sb-field {
-            flex: 1;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 0 16px;
-            border-right: 1px solid #e0e0e0;
-        }
-        .search-bar .sb-field:last-of-type { border-right: none; }
-        .search-bar .sb-field svg { flex-shrink: 0; color: #666; }
-        .search-bar input {
-            border: none;
-            outline: none;
-            font-family: inherit;
-            font-size: .9rem;
-            color: #1a1a1a;
-            width: 100%;
-            padding: 13px 0;
-            background: transparent;
-        }
-        .search-bar input::placeholder { color: #999; }
-
-        /* ─── AUTOCOMPLETE DROPDOWN ──────────────────── */
-        .ac-wrap { position: relative; flex: 1; display: flex; align-items: center; }
-        .ac-wrap input { width: 100%; }
-        .ac-list {
-            position: fixed;          /* fixed escapes ALL overflow:hidden ancestors */
-            background: #fff;
-            border: 1px solid #d1d5db;
-            border-radius: 8px;
-            box-shadow: 0 8px 24px rgba(0,0,0,.18);
-            max-height: 240px;
-            overflow-y: auto;
-            z-index: 9999;
-            display: none;
-            min-width: 220px;
-        }
-        .ac-list.open { display: block; }
-        .ac-item {
-            padding: 9px 16px;
-            font-size: .875rem;
-            color: #1a1a1a;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .ac-item:hover, .ac-item.active { background: #f0f7ff; color: #0a66c2; }
         .ac-item mark { background: none; color: #0a66c2; font-weight: 700; }
         /* skill tag chips inside the skills input wrap */
         .skill-tags-wrap {
@@ -622,15 +474,6 @@
 
         /* Action buttons */
         .card-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-        /* Bookmark button */
-        .btn-bookmark { background: #fff; color: #64748b; border: 2px solid #cbd5e1; }
-        .btn-bookmark:hover { background: #fef9c3; border-color: #f59e0b; color: #b45309; }
-        .btn-bookmark.bookmarked { background: #fef3c7; color: #b45309; border-color: #f59e0b; }
-        /* Saved jobs panel */
-        #saved-panel { display:none; }
-        #saved-panel.active { display:block; }
-        .saved-empty { text-align:center; padding:40px 16px; color:#999; font-size:.9rem; }
-        .saved-empty .icon { font-size:2rem; margin-bottom:8px; }
         .btn {
             display: inline-flex;
             align-items: center;
@@ -752,379 +595,52 @@
         @keyframes slideIn { from {opacity:0;transform:translateX(30px)} to {opacity:1;transform:translateX(0)} }
         @keyframes slideOut { to {opacity:0;transform:translateX(30px)} }
 
-        /* ─── MOBILE FILTER TOGGLE (hidden on desktop) ─── */
-        .mobile-filter-toggle {
+        /* ─── GLOBAL LOADING OVERLAY ─────────────────── */
+        .page-loading-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(10, 20, 35, 0.48);
+            backdrop-filter: blur(2px);
+            z-index: 10000;
             display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
         }
-
-        /* ─── RESPONSIVE ───────────────────────────────────── */
-
-        /* ── Tablet (768–1024px) ── */
-        @media (min-width: 768px) and (max-width: 1024px) {
-            .navbar { padding: 0 16px; }
-            .hero   { padding: 12px 16px; }
-            .page-body {
-                grid-template-columns: 200px 1fr;
-                padding: 10px 16px;
-            }
-            .stats-strip { grid-template-columns: repeat(3, 1fr); }
-        }
-
-        /* ── Mobile (≤ 767px) ── */
-        @media (max-width: 767px) {
-            /* ── Kill the viewport-lock layout completely ── */
-            html { overflow: auto !important; height: auto !important; }
-            body { overflow: auto !important; height: auto !important; min-height: 100vh; }
-            #main-form {
-                flex: none !important;
-                overflow: visible !important;
-                height: auto !important;
-                min-height: 0 !important;
-            }
-            .page-wrapper {
-                flex: none !important;
-                overflow: visible !important;
-                height: auto !important;
-                min-height: 0 !important;
-            }
-            .page-body {
-                grid-template-columns: 1fr !important;
-                overflow: visible !important;
-                height: auto !important;
-                min-height: 0 !important;
-                padding: 10px 12px;
-                gap: 10px;
-            }
-            .results-area {
-                overflow: visible !important;
-                height: auto !important;
-                min-height: 0 !important;
-            }
-            .sidebar {
-                overflow: visible !important;
-                height: auto !important;
-                max-height: none !important;
-                min-height: 0 !important;
-            }
-
-            /* ── Prevent horizontal overflow ── */
-            *, *::before, *::after { max-width: 100%; }
-            body { overflow-x: hidden !important; }
-
-            /* ── Navbar — compact, wraps to 2 rows on mobile ── */
-            .navbar { padding: 0 10px; }
-            .navbar-inner {
-                height: auto !important;
-                padding: 6px 0;
-                flex-wrap: wrap;
-                gap: 6px;
-            }
-            .brand { font-size: .9rem; flex: 1 0 100%; margin-bottom: 2px; }
-            #applied-nav-link { padding: 3px 8px; font-size: .75rem; }
-            #new-jobs-bell    { padding: 3px 8px; font-size: .75rem; }
-            /* Auto-Apply Bot — visible but compact */
-            .navbar-inner a[href="/auto-apply"] {
-                display: flex !important;
-                padding: 3px 8px;
-                font-size: .75rem;
-                background: #f0f7ff;
-                border: 1px solid #bfdbfe;
-                border-radius: 20px;
-            }
-
-            /* ── Hero: hide title/subtitle, shrink padding ── */
-            .hero { padding: 8px 10px; }
-            .hero h1 { display: none; }
-            .hero p  { display: none; }
-
-            /* ── Search bar: compact single-line fields ── */
-            .search-bar {
-                flex-direction: column !important;
-                border-radius: 8px;
-                box-shadow: 0 1px 6px rgba(0,0,0,.15);
-            }
-            .search-bar .sb-field {
-                border-right: none !important;
-                border-bottom: 1px solid #e0e0e0;
-                border-radius: 0 !important;
-                padding: 0 10px;
-                width: 100%;
-                min-height: 42px;
-                max-height: 48px;
-                overflow: hidden;
-            }
-            .search-bar .sb-field:first-child { border-radius: 8px 8px 0 0 !important; }
-            /* Limit chips inside search fields so they don't expand vertically */
-            .skill-tags-wrap {
-                flex-wrap: nowrap !important;
-                overflow: hidden;
-                max-height: 36px;
-            }
-            .skill-tag-chip { display: none; }
-            .skill-tag-chip:first-of-type { display: inline-flex; }
-            .sb-btn {
-                justify-content: center;
-                padding: 10px;
-                border-radius: 0 0 8px 8px !important;
-                font-size: .9rem;
-                width: 100%;
-                min-height: 42px;
-            }
-
-            /* ── Resume bar — one-liner ── */
-            .resume-bar { padding: 5px 10px; }
-            .resume-bar-inner { flex-wrap: nowrap; gap: 6px; font-size: .78rem; overflow: hidden; }
-            .resume-bar label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-            /* ── Mobile filter toggle button ── */
-            .mobile-filter-toggle {
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                gap: 8px;
-                width: 100%;
-                padding: 10px 16px;
-                background: #fff;
-                border: 1px solid #d1d5db;
-                border-radius: 6px;
-                font-family: inherit;
-                font-size: .9rem;
-                font-weight: 600;
-                color: #374151;
-                cursor: pointer;
-                margin-bottom: 6px;
-            }
-            .sidebar.mobile-collapsed { display: none !important; }
-
-            /* ── Stats strip ── */
-            .stats-strip { grid-template-columns: repeat(2, 1fr); }
-
-            /* ── Job cards ── */
-            .job-card { padding: 10px 12px; }
-            .card-top { gap: 8px; }
-            .company-logo { width: 36px; height: 36px; font-size: .85rem; flex-shrink: 0; }
-            .job-title { font-size: .9rem; white-space: normal !important; }
-            .job-meta-row { gap: 8px; font-size: .78rem; }
-            .ats-badge { width: 46px; flex-shrink: 0; }
-            .ats-circle { width: 44px; height: 44px; font-size: .78rem; }
-            .card-footer { flex-direction: column; align-items: flex-start; gap: 8px; }
-            .card-actions { flex-wrap: wrap; gap: 6px; width: 100%; }
-            .btn { padding: 8px 12px; font-size: .78rem; min-height: 36px; flex: 1 0 auto; }
-
-            /* ── Scorecard bars ── */
-            .sc-bar-row { grid-template-columns: 80px 1fr 36px; gap: 6px; }
-
-            /* ── Results header ── */
-            .results-header { flex-direction: column; align-items: flex-start; gap: 4px; }
-            .sort-info { font-size: .78rem; }
-
-            /* ── Toast ── */
-            #toast-container { left: 12px; right: 12px; bottom: 12px; }
-            .toast { min-width: unset; width: 100%; }
-
-            /* ── Loading badge ── */
-            #lo-badge { bottom: 72px; right: 12px; left: 12px; border-radius: 8px; justify-content: center; }
-
-            /* ── Skill chips ── */
-            .skill-row { flex-wrap: wrap; }
-        }
-
-        /* ── Very small (≤ 400px) ── */
-        @media (max-width: 400px) {
-            .hero h1 { font-size: .82rem; }
-            .brand   { font-size: .9rem; }
-            .stats-strip { gap: 6px; }
-            .stat-box .sv { font-size: 1rem; }
-            .btn { font-size: .74rem; padding: 7px 10px; }
-            .skill-chip { font-size: .7rem; padding: 2px 7px; }
-        }
-    /* ── Loading Overlay ── */
-    /* ── Top progress bar (non-blocking) ── */
-    #loading-overlay { display: none; }
-    #loading-overlay.active { display: block; }
-    #lo-topbar {
-        display: none;
-        position: fixed;
-        top: 0; left: 0;
-        width: 0%;
-        height: 3px;
-        background: linear-gradient(90deg, #0a66c2, #38bdf8);
-        z-index: 9999;
-        border-radius: 0 2px 2px 0;
-        transition: width 0.3s ease;
-    }
-    #lo-topbar.active {
-        display: block;
-        animation: lo-progress 2.5s ease-in-out infinite;
-    }
-    @keyframes lo-progress {
-        0%   { width: 0%; opacity: 1; }
-        70%  { width: 85%; opacity: 1; }
-        100% { width: 95%; opacity: 0.8; }
-    }
-    /* Small spinner badge bottom-right */
-    #lo-badge {
-        display: none;
-        position: fixed;
-        bottom: 24px; right: 24px;
-        background: #fff;
-        border: 1px solid #e2e8f0;
-        border-radius: 999px;
-        box-shadow: 0 4px 16px rgba(0,0,0,0.12);
-        padding: 10px 16px;
-        align-items: center;
-        gap: 10px;
-        z-index: 9999;
-        font-size: 0.85rem;
-        font-weight: 500;
-        color: #334155;
-    }
-    #lo-badge.active { display: flex; }
-    .lo-spinner {
-        width: 18px; height: 18px;
-        border: 2.5px solid #e2e8f0;
-        border-top-color: #0a66c2;
-        border-radius: 50%;
-        animation: lo-spin 0.8s linear infinite;
-        flex-shrink: 0;
-    }
-    @keyframes lo-spin { to { transform: rotate(360deg); } }
-
-    /* ─── DARK MODE OVERRIDES ─────────────────────────── */
-    [data-theme="dark"] .search-bar,
-    [data-theme="dark"] .sb-field,
-    [data-theme="dark"] .ac-list,
-    [data-theme="dark"] .chip-input-wrap { background: var(--bg-input) !important; border-color: var(--border-input) !important; }
-    [data-theme="dark"] .search-bar input,
-    [data-theme="dark"] .chip-input-wrap input { color: var(--text) !important; background: transparent !important; }
-    [data-theme="dark"] .search-bar input::placeholder { color: var(--text-light) !important; }
-    [data-theme="dark"] .sb-field { border-right-color: var(--border) !important; }
-    [data-theme="dark"] .ac-item { color: var(--text) !important; }
-    [data-theme="dark"] .ac-item:hover,
-    [data-theme="dark"] .ac-item.active { background: var(--ac-hover) !important; }
-    [data-theme="dark"] .ac-list { background: var(--ac-bg) !important; border-color: var(--border) !important; }
-    [data-theme="dark"] .page-body { background: var(--bg) !important; }
-    [data-theme="dark"] .left-panel,
-    [data-theme="dark"] .filter-panel { background: var(--bg-sidebar) !important; border-color: var(--border) !important; }
-    [data-theme="dark"] .right-panel { background: var(--bg) !important; }
-    [data-theme="dark"] .job-card,
-    [data-theme="dark"] .common-card { background: var(--bg-card) !important; border-color: var(--border) !important; box-shadow: 0 1px 4px var(--shadow-card) !important; }
-    [data-theme="dark"] .job-card:hover,
-    [data-theme="dark"] .common-card:hover { background: var(--bg-hover) !important; box-shadow: 0 4px 16px var(--shadow) !important; }
-    [data-theme="dark"] .job-title { color: var(--brand) !important; }
-    [data-theme="dark"] .job-company,
-    [data-theme="dark"] .job-meta,
-    [data-theme="dark"] .job-location { color: var(--text-muted) !important; }
-    [data-theme="dark"] .skill-chip { background: var(--bg-chip) !important; color: var(--text-chip) !important; border-color: var(--border-input) !important; }
-    [data-theme="dark"] .skill-chip .chip-x { color: var(--text-muted) !important; }
-    [data-theme="dark"] .skill-chip .chip-x:hover { color: var(--text) !important; }
-    [data-theme="dark"] .stats-strip { background: var(--bg-sidebar) !important; border-color: var(--border) !important; }
-    [data-theme="dark"] .stat-box { background: var(--stat-bg) !important; border-color: var(--border) !important; }
-    [data-theme="dark"] .stat-label { color: var(--text-muted) !important; }
-    [data-theme="dark"] .filter-section-title { color: var(--text-muted) !important; border-color: var(--border) !important; }
-    [data-theme="dark"] .filter-row label { color: var(--text-muted) !important; }
-    [data-theme="dark"] input[type=range] { accent-color: var(--brand); }
-    [data-theme="dark"] .section-heading { color: var(--text-muted) !important; border-color: var(--border) !important; }
-    [data-theme="dark"] .source-badge { background: var(--bg-chip) !important; color: var(--text-chip) !important; }
-    [data-theme="dark"] .new-badge { background: #064e3b !important; color: #6ee7b7 !important; }
-    [data-theme="dark"] .applied-badge { background: #1e3a5f !important; color: #93c5fd !important; }
-    [data-theme="dark"] .sc-track { background: #2e3548 !important; }
-    [data-theme="dark"] .sc-bar-lbl,
-    [data-theme="dark"] .sc-recs h5 { color: var(--text-muted) !important; }
-    [data-theme="dark"] .sc-rec { color: var(--text-muted) !important; }
-    [data-theme="dark"] .sc-recs { border-color: var(--border) !important; }
-    [data-theme="dark"] .sc-tags .sc-tag-match { background: #064e3b !important; color: #6ee7b7 !important; }
-    [data-theme="dark"] .sc-tags .sc-tag-miss  { background: #450a0a !important; color: #fca5a5 !important; }
-    [data-theme="dark"] .sc-strong   { background: #064e3b !important; color: #6ee7b7 !important; }
-    [data-theme="dark"] .sc-moderate { background: #431407 !important; color: #fdba74 !important; }
-    [data-theme="dark"] .sc-weak     { background: #450a0a !important; color: #fca5a5 !important; }
-    [data-theme="dark"] .btn-outline { background: transparent !important; color: var(--brand) !important; border-color: var(--brand) !important; }
-    [data-theme="dark"] .btn-bookmark { background: var(--bg-card) !important; border-color: #475569 !important; color: #94a3b8 !important; }
-    [data-theme="dark"] .btn-bookmark.bookmarked { background: #451a03 !important; color: #fbbf24 !important; border-color: #d97706 !important; }
-    [data-theme="dark"] .btn-ghost   { background: var(--bg-hover) !important; color: var(--text-muted) !important; }
-    [data-theme="dark"] #lo-badge { background: var(--lo-badge-bg) !important; border-color: var(--lo-badge-brd) !important; color: var(--lo-badge-text) !important; }
-    [data-theme="dark"] .lo-spinner  { border-color: var(--border) !important; border-top-color: var(--brand) !important; }
-    [data-theme="dark"] .upload-area { background: var(--bg-sidebar) !important; border-color: var(--border-input) !important; color: var(--text-muted) !important; }
-    [data-theme="dark"] .resume-info { background: var(--bg-card) !important; border-color: var(--border) !important; color: var(--text-muted) !important; }
-    [data-theme="dark"] select,
-    [data-theme="dark"] input[type=text],
-    [data-theme="dark"] input[type=number] { background: var(--bg-input) !important; color: var(--text) !important; border-color: var(--border-input) !important; }
-    [data-theme="dark"] .scrollable::-webkit-scrollbar-track { background: var(--scrollbar-bg); }
-    [data-theme="dark"] .scrollable::-webkit-scrollbar-thumb { background: var(--scrollbar-th); }
-    [data-theme="dark"] *::-webkit-scrollbar-track { background: var(--scrollbar-bg); }
-    [data-theme="dark"] *::-webkit-scrollbar-thumb { background: var(--scrollbar-th); border-radius: 4px; }
-        .sc-strong   { background: #dcfce7; color: #166534; }
-        .sc-moderate { background: #fff7ed; color: #9a3412; }
-        .sc-weak     { background: #fff1f2; color: #9f1239; }
-
-        .sc-bars { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
-        .sc-bar-row { display: grid; grid-template-columns: 130px 1fr 38px; align-items: center; gap: 10px; }
-        .sc-bar-lbl { font-size: .8rem; color: #555; font-weight: 500; }
-        .sc-track { height: 7px; background: #e5e7eb; border-radius: 10px; overflow: hidden; }
-        .sc-fill  { height: 7px; border-radius: 10px; transition: width .6s ease; }
-        .sc-pct   { font-size: .8rem; font-weight: 700; text-align: right; }
-        .fill-high   { background: linear-gradient(90deg,#16a34a,#22c55e); }
-        .fill-medium { background: linear-gradient(90deg,#ea580c,#fb923c); }
-        .fill-low    { background: linear-gradient(90deg,#dc2626,#f87171); }
-
-        .sc-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 12px; }
-        .sc-recs { border-top: 1px solid #e5e7eb; padding-top: 10px; }
-        .sc-recs h5 { font-size: .78rem; font-weight: 700; color: #444; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
-        .sc-rec { font-size: .8rem; color: #555; padding: 4px 0; display: flex; gap: 6px; }
-        .sc-rec::before { content: '›'; color: #0a66c2; font-weight: 700; }
-
-        /* ─── COMMON JOBS ──────────────────────────────── */
-        .common-section { margin-top: 8px; }
-        .section-heading {
-            font-size: .82rem;
-            font-weight: 700;
-            color: #777;
-            text-transform: uppercase;
-            letter-spacing: .06em;
-            padding: 12px 0 8px;
-            border-top: 1px solid #e0e0e0;
-            margin-top: 8px;
-        }
-        .common-card {
-            background: #fff;
-            border: 1px solid #e0e0e0;
-            border-radius: 8px;
-            padding: 12px 16px;
-            margin-bottom: 8px;
+        .page-loading-overlay.active { display: flex; }
+        .page-loading-card {
+            min-width: 280px;
+            max-width: 520px;
+            background: #ffffff;
+            border: 1px solid #dbe4ef;
+            border-radius: 14px;
+            box-shadow: 0 14px 40px rgba(0, 0, 0, 0.24);
+            padding: 18px 20px;
             display: flex;
             align-items: center;
             gap: 12px;
-            font-size: .85rem;
         }
-        .common-card strong { color: #1a1a1a; }
-        .common-card span   { color: #777; }
-
-        /* ─── EMPTY STATE ──────────────────────────────── */
-        .empty-state {
-            background: #fff;
-            border: 1px solid #e0e0e0;
-            border-radius: 8px;
-            padding: 56px 20px;
-            text-align: center;
-            color: #999;
+        .page-loading-spinner {
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            border: 3px solid #dbeafe;
+            border-top-color: #0a66c2;
+            animation: spin .8s linear infinite;
+            flex-shrink: 0;
         }
-        .empty-state .icon { font-size: 2.5rem; margin-bottom: 12px; }
-        .empty-state h3 { font-size: 1rem; font-weight: 700; color: #555; margin-bottom: 6px; }
-
-        /* ─── TOAST ────────────────────────────────────── */
-        #toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; }
-        .toast {
-            background: #1e293b; color: #f1f5f9;
-            padding: 11px 18px; border-radius: 8px;
-            font-size: .85rem; font-weight: 500;
-            box-shadow: 0 4px 20px rgba(0,0,0,.25);
-            display: flex; align-items: center; gap: 8px;
-            animation: slideIn .25s ease;
-            min-width: 240px;
+        .page-loading-title {
+            font-size: .95rem;
+            font-weight: 700;
+            color: #0a2540;
+            margin-bottom: 2px;
         }
-        .toast.hide { animation: slideOut .25s ease forwards; }
-        @keyframes slideIn { from {opacity:0;transform:translateX(30px)} to {opacity:1;transform:translateX(0)} }
-        @keyframes slideOut { to {opacity:0;transform:translateX(30px)} }
+        .page-loading-sub {
+            font-size: .82rem;
+            color: #55657a;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
 
         /* ─── RESPONSIVE ───────────────────────────────── */
         @media(max-width: 860px) {
@@ -1139,16 +655,15 @@
 </head>
 <body>
 <div id="toast-container"></div>
-
-<!-- ═══════════ SEARCH LOADING OVERLAY ═══════════ -->
-<!-- Top progress bar (Google-style) -->
-<div id="lo-topbar"></div>
-<!-- Bottom-right floating badge -->
-<div id="lo-badge">
-    <div class="lo-spinner"></div>
-    <span id="lo-message">Searching jobs…</span>
+<div id="page-loading-overlay" class="page-loading-overlay" aria-live="polite" aria-busy="true">
+    <div class="page-loading-card">
+        <div class="page-loading-spinner" aria-hidden="true"></div>
+        <div>
+            <div class="page-loading-title">Working on your request...</div>
+            <div class="page-loading-sub" id="page-loading-text">Searching jobs across LinkedIn and Naukri.</div>
+        </div>
+    </div>
 </div>
-
 <!-- Autocomplete dropdowns — placed at body root to escape all overflow:hidden -->
 <ul class="ac-list" id="ac-designation"></ul>
 <ul class="ac-list" id="ac-location"></ul>
@@ -1157,8 +672,7 @@
 <!-- ═══════════ NAVBAR ═══════════ -->
 <nav class="navbar">
     <div class="navbar-inner">
-        <div class="brand">🤖 AI Job<span> Matcher</span></div>
-        <div style="margin-left:auto;display:flex;gap:16px;align-items:center;flex-wrap:wrap;">
+        <a class="brand" href="/" title="Go to Home" style="text-decoration:none;">🤖 AI Job<span> Matcher</span></a>
         <div style="margin-left:auto;display:flex;gap:16px;align-items:center;">
             <!-- 🔔 New jobs notification bell -->
             {% if new_jobs_count and new_jobs_count > 0 %}
@@ -1175,30 +689,41 @@
             <a href="/auto-apply" style="color:#0a66c2;font-weight:600;font-size:.88rem;">
                 🤖 Auto-Apply Bot
             </a>
-            <!-- Dark mode toggle -->
-            <button type="button" id="theme-toggle" onclick="toggleTheme()"
-                    style="background:none;border:1.5px solid var(--border);border-radius:20px;padding:4px 12px;
-                           cursor:pointer;font-size:.85rem;color:var(--text);display:flex;align-items:center;gap:5px;
-                           transition:background .2s,border-color .2s;"
-                    title="Toggle dark mode">
-                <span id="theme-icon">🌙</span>
-                <span id="theme-label">Dark</span>
-            </button>
-            {% if current_user and current_user.is_authenticated %}
-            <div style="display:flex;align-items:center;gap:8px;border-left:1px solid #e5e7eb;padding-left:16px;">
-                {% if current_user.picture %}
-                <img src="{{ current_user.picture }}" alt="{{ current_user.name }}"
-                     style="width:30px;height:30px;border-radius:50%;border:2px solid #e5e7eb;"
-                     onerror="this.style.display='none'">
-                {% endif %}
-                <span style="font-size:.82rem;color:#374151;font-weight:600;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ current_user.name or current_user.email }}</span>
-                <a href="/account-settings" style="font-size:.78rem;color:#2563eb;text-decoration:none;font-weight:600;background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:3px 10px;">⚙️ Settings</a>
-                <a href="/logout" style="font-size:.78rem;color:#dc2626;text-decoration:none;font-weight:600;background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:3px 10px;">Sign out</a>
-            </div>
-            {% endif %}
+            <a href="/account-settings" style="color:#64748b;font-weight:600;font-size:.88rem;text-decoration:none;">
+                ⚙️ Settings
+            </a>
+            <a href="/logout" style="display:flex;align-items:center;gap:5px;color:#dc2626;font-weight:600;font-size:.88rem;text-decoration:none;background:#fef2f2;border:1px solid #fca5a5;border-radius:20px;padding:4px 14px;"
+               onclick="return confirm('Sign out?')">
+                🚪 Logout
+            </a>
         </div>
     </div>
 </nav>
+
+{% if usage_blocked %}
+<div style="background:#fff1f2;border-bottom:1px solid #fda4af;padding:10px 24px;">
+    <div style="max-width:1280px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <div style="color:#9f1239;font-size:.9rem;font-weight:600;">
+            {{ rate_limit_message }}
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;">
+            {% if payment_link_url %}
+                <a href="{{ payment_link_url }}?user={{ session.get('username','') }}" target="_blank" rel="noopener"
+                   style="text-decoration:none;background:#0a66c2;color:#fff;padding:6px 12px;border-radius:8px;font-size:.82rem;font-weight:700;">Upgrade</a>
+            {% else %}
+                <a href="/billing" style="text-decoration:none;background:#0a66c2;color:#fff;padding:6px 12px;border-radius:8px;font-size:.82rem;font-weight:700;">View Billing</a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% else %}
+<div style="background:#eff6ff;border-bottom:1px solid #bfdbfe;padding:8px 24px;color:#1d4ed8;font-size:.82rem;">
+    <div style="max-width:1280px;margin:0 auto;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <span>Plan: <strong style="text-transform:capitalize;">{{ usage_plan }}</strong></span>
+        <span>Daily searches: <strong>{{ usage_daily_count }}</strong> / <strong>{{ usage_daily_limit }}</strong></span>
+    </div>
+</div>
+{% endif %}
 
 <!-- ═══════════ MAIN FORM ═══════════ -->
 <form method="post" enctype="multipart/form-data" id="main-form">
@@ -1278,15 +803,10 @@
 <div class="page-body">
 
     <!-- ── FILTER SIDEBAR ── -->
-    <!-- Mobile: toggle button to show/hide filters -->
-    <button type="button" class="mobile-filter-toggle" id="filter-toggle-btn"
-            onclick="toggleMobileFilters()">
-        ⚙️ Filters
-    </button>
-    <aside class="sidebar mobile-collapsed" id="filter-sidebar">
+    <aside class="sidebar">
         <div class="sidebar-header">
             Filters
-            <a onclick="document.querySelector('#main-form').reset();">Clear all</a>
+            <button type="button" id="clear-all-filters" style="background:none;border:none;color:#0a66c2;cursor:pointer;font:inherit;padding:0;">Clear all</button>
         </div>
         <div class="filter-section">
             <div class="filter-label">Experience (years)</div>
@@ -1308,25 +828,6 @@
     <!-- ── RESULTS ── -->
     <div class="results-area">
 
-        <!-- View tabs: Jobs / Saved -->
-        <div style="display:flex;gap:0;border-bottom:2px solid #e5e7eb;margin-bottom:16px;">
-            <button id="tab-jobs" onclick="switchTab('jobs')"
-                style="padding:9px 22px;font-size:.85rem;font-weight:700;border:none;background:none;
-                       cursor:pointer;border-bottom:3px solid #0a66c2;color:#0a66c2;margin-bottom:-2px;">
-                🗂 All Jobs
-            </button>
-            <button id="tab-saved" onclick="switchTab('saved')"
-                style="padding:9px 22px;font-size:.85rem;font-weight:600;border:none;background:none;
-                       cursor:pointer;border-bottom:3px solid transparent;color:#64748b;margin-bottom:-2px;">
-                🔖 Saved Jobs <span id="saved-badge" style="background:#f59e0b;color:#fff;border-radius:10px;
-                    padding:1px 7px;font-size:.72rem;margin-left:4px;"></span>
-            </button>
-        </div>
-
-        <!-- Saved Jobs panel -->
-        <div id="saved-panel"></div>
-
-        <div id="jobs-panel">
         {% if jobs %}
         <!-- Stats strip -->
         {% set total    = jobs|length %}
@@ -1346,19 +847,20 @@
         </div>
 
         <!-- Results header -->
-        {% if did_submit and search_id %}
-        <div id="bg-refresh-banner" style="display:none;background:linear-gradient(135deg,#eff6ff,#dbeafe);border:1px solid #93c5fd;border-radius:8px;padding:10px 16px;margin-bottom:12px;align-items:center;gap:10px;font-size:.85rem;color:#1d4ed8;">
-            <span style="font-size:1.1rem">🔄</span>
-            <span id="bg-banner-text">Fetching fresh jobs from LinkedIn &amp; Naukri in background…</span>
-            <button onclick="var f=document.getElementById('main-form');if(f)f.submit();else location.reload();" style="margin-left:auto;padding:4px 12px;border-radius:5px;background:#1d4ed8;color:#fff;border:none;cursor:pointer;font-size:.8rem">Refresh</button>
-        </div>
-        {% endif %}
         <div class="results-header">
             <div class="results-count"><span>{{ total }}</span> jobs found</div>
-            <div class="sort-info">Sorted by: Best match · Newest first</div>
+            <div style="display:flex;align-items:center;gap:12px;">
+                <span style="font-size:.78rem;color:#0a66c2;background:#e0f2fe;
+                             border:1px solid #bae6fd;border-radius:20px;padding:3px 10px;
+                             display:flex;align-items:center;gap:6px;">
+                    <span style="width:7px;height:7px;background:#0a66c2;border-radius:50%;
+                                 display:inline-block;animation:blink 1.4s infinite;"></span>
+                    Refreshing in background
+                </span>
+                <div class="sort-info">Sorted by: Best match · Newest first</div>
+            </div>
         </div>
 
-        <!-- Job cards -->
         <!-- Job cards -->
         {% for job in jobs %}
         {% set score = job.match_score %}
@@ -1382,7 +884,7 @@
                             {% if job.url %}onclick="window.open('{{ job.url }}','_blank')"{% endif %}>
                             {{ job.title }}
                         </div>
-                        {% if job.posted_days_ago is not none and job.posted_days_ago <= 1 %}
+                        {% if job.first_seen_at and job.first_seen_at[:10] >= (now_date | default('2000-01-01')) %}
                         <span style="background:#e0f2fe;color:#0369a1;font-size:.68rem;font-weight:800;
                                      padding:1px 8px;border-radius:20px;letter-spacing:.03em;">🆕 NEW</span>
                         {% endif %}
@@ -1460,10 +962,7 @@
 
                 <div class="card-actions">
                     {% if job.url %}
-                    <a href="#" class="btn btn-primary apply-now-btn"
-                       data-url="{{ job.url }}"
-                       data-job-id="{{ job.id }}"
-                       onclick="validateAndApply(event, this)">Apply Now</a>
+                    <a href="{{ job.url }}" target="_blank" class="btn btn-primary">Apply Now</a>
                     {% endif %}
 
                     <button type="button"
@@ -1480,13 +979,6 @@
                        title="Downloads your resume with missing JD skills added (+10–20% ATS boost)">
                         🎯 Smart CV
                     </a>
-                    <button type="button"
-                        class="btn btn-bookmark bookmark-btn {{ 'bookmarked' if job.is_bookmarked else '' }}"
-                        data-job-id="{{ job.id }}"
-                        title="{{ 'Remove bookmark' if job.is_bookmarked else 'Save for later' }}"
-                        onclick="toggleBookmark(this)">
-                        {{ '🔖 Saved' if job.is_bookmarked else '🔖 Save' }}
-                    </button>
                     {% endif %}
                 </div>
             </div>
@@ -1525,59 +1017,11 @@
         {% endif %}
 
         {% elif did_submit %}
-        {% if search_id %}
-        <!-- Jobs fetching in background — show live spinner -->
-        <div class="empty-state" id="searching-state">
-            <div class="icon">⏳</div>
-            <h3>Fetching jobs from LinkedIn &amp; Naukri…</h3>
-            <p>This takes about 30–90 seconds. The page will update automatically.</p>
-            <p style="margin-top:10px">
-                <span id="fetch-elapsed" style="font-size:.85rem;color:#888">⏳ Starting…</span>
-            </p>
-            <button onclick="location.reload()" style="margin-top:14px;padding:8px 20px;border-radius:6px;background:#0a66c2;color:#fff;border:none;cursor:pointer;font-size:.9rem">🔄 Refresh Now</button>
-        </div>
-        <script>
-        (function(){
-            var sid = {{ search_id | tojson }};
-            var elapsed = 0;
-            var elSpan = document.getElementById('fetch-elapsed');
-            var interval = setInterval(function(){
-                elapsed += 2;
-                if (elSpan) elSpan.textContent = '⏱ ' + elapsed + 's elapsed…';
-                fetch('/api/search-status/' + sid)
-                    .then(function(r){ return r.json(); })
-                    .then(function(d){
-                        if (d.status === 'done') {
-                            clearInterval(interval);
-                            var cnt = d.count || 0;
-                            if (elSpan) elSpan.textContent = '✅ Done! ' + cnt + ' jobs found. Loading…';
-                            // Use form.submit() instead of location.reload() — avoids browser resubmit dialog
-                            setTimeout(function(){
-                                var form = document.getElementById('main-form');
-                                if (form) form.submit(); else location.reload();
-                            }, 600);
-                        }
-                    })
-                    .catch(function(){});
-            }, 2000);
-            // Safety: at 130s use form.submit() as fallback
-            setTimeout(function(){
-                clearInterval(interval);
-                if (elSpan) elSpan.textContent = '⏱ Still searching… reloading now.';
-                setTimeout(function(){
-                    var form = document.getElementById('main-form');
-                    if (form) form.submit(); else location.reload();
-                }, 1000);
-            }, 130000);
-        })();
-        </script>
-        {% else %}
         <div class="empty-state">
             <div class="icon">🔭</div>
             <h3>No jobs found</h3>
             <p>Try broadening your filters — clear experience / posted-within, or change your skills.</p>
         </div>
-        {% endif %}
         {% else %}
         <div class="empty-state">
             <div class="icon">💼</div>
@@ -1585,7 +1029,6 @@
             <p>Upload your resume or enter skills &amp; location, then click <strong>Search Jobs</strong>.</p>
         </div>
         {% endif %}
-        </div><!-- /jobs-panel -->
 
     </div><!-- /results-area -->
 </div><!-- /page-body -->
@@ -1594,14 +1037,27 @@
 
 <!-- ═════════════════════════════════════════ SCRIPTS -->
 <script>
-// ── Mobile Filter Toggle ───────────────────────────────
-function toggleMobileFilters() {
-    var sidebar = document.getElementById('filter-sidebar');
-    var btn     = document.getElementById('filter-toggle-btn');
-    if (!sidebar) return;
-    var collapsed = sidebar.classList.toggle('mobile-collapsed');
-    if (btn) btn.textContent = collapsed ? '⚙️ Filters' : '✕ Hide Filters';
+// ── Global Loading Overlay ───────────────────────────
+var _pageLoadingShown = false;
+function showPageLoading(msg) {
+    if (_pageLoadingShown) return;
+    var overlay = document.getElementById('page-loading-overlay');
+    var text = document.getElementById('page-loading-text');
+    if (text && msg) text.textContent = msg;
+    if (overlay) overlay.classList.add('active');
+    _pageLoadingShown = true;
 }
+
+function hidePageLoading() {
+    var overlay = document.getElementById('page-loading-overlay');
+    if (overlay) overlay.classList.remove('active');
+    _pageLoadingShown = false;
+}
+
+window.addEventListener('pageshow', function() {
+    // Handles browser back/forward cache restores.
+    hidePageLoading();
+});
 
 // ── Toast ─────────────────────────────────────────────
 function toast(msg, type) {
@@ -1613,74 +1069,6 @@ function toast(msg, type) {
     c.appendChild(el);
     setTimeout(function(){ el.classList.add('hide'); setTimeout(function(){ el.remove(); }, 300); }, 3200);
 }
-
-// ── Loading Overlay ───────────────────────────────────
-function showSearchOverlay(msg) {
-    var bar   = document.getElementById('lo-topbar');
-    var badge = document.getElementById('lo-badge');
-    var lm    = document.getElementById('lo-message');
-    if (lm)    lm.textContent = msg || 'Searching jobs…';
-    if (bar)   bar.classList.add('active');
-    if (badge) badge.classList.add('active');
-}
-function hideSearchOverlay() {
-    var bar   = document.getElementById('lo-topbar');
-    var badge = document.getElementById('lo-badge');
-    if (bar)   bar.classList.remove('active');
-    if (badge) badge.classList.remove('active');
-}
-
-// Show overlay whenever the main form is submitted (Search Jobs or Apply Filters)
-(function(){
-    var form = document.getElementById('main-form');
-    if (!form) return;
-    form.addEventListener('submit', function(){
-        showSearchOverlay('Searching jobs…');
-    });
-    // Hide overlay if user navigates back to page (bfcache restore)
-    window.addEventListener('pageshow', function(e){
-        if (e.persisted) hideSearchOverlay();
-    });
-})();
-
-// Show "live jobs fetching in background" banner after search results load
-(function(){
-    var searchId = {{ search_id | tojson if search_id else 'null' }};
-    if (!searchId) return;
-    var banner   = document.getElementById('bg-refresh-banner');
-    var bannerTxt = document.getElementById('bg-banner-text');
-    var searching = document.getElementById('searching-state');
-    // Searching-state has its own polling — skip banner here
-    if (searching) return;
-    if (banner) banner.style.display = 'flex';
-    var elapsed = 0;
-    var interval = setInterval(function(){
-        elapsed += 2;
-        fetch('/api/search-status/' + searchId)
-            .then(function(r){ return r.json(); })
-            .then(function(d){
-                if (d.status === 'done') {
-                    clearInterval(interval);
-                    // ⚠️ DO NOT auto-reload here — that causes an infinite loop.
-                    // Instead, let the user decide to refresh.
-                    var cnt = d.count || 0;
-                    if (banner && bannerTxt) {
-                        bannerTxt.textContent = cnt > 0
-                            ? '✅ ' + cnt + ' fresh jobs fetched! Click Refresh to see them.'
-                            : '✅ Fetch complete. Click Refresh to reload.';
-                    }
-                    // Change the "Refresh" button to be more prominent
-                    var btn = banner ? banner.querySelector('button') : null;
-                    if (btn) { btn.style.background = '#16a34a'; btn.textContent = '🔄 Refresh Now'; }
-                } else {
-                    if (bannerTxt) bannerTxt.textContent = '🔄 Fetching fresh jobs from LinkedIn & Naukri… (' + elapsed + 's)';
-                }
-            })
-            .catch(function(){});
-    }, 2000);
-    // At 130s, just update button text — never auto-reload
-    setTimeout(function(){ clearInterval(interval); if (bannerTxt) bannerTxt.textContent = '⏱ Fetch still running in background. Refresh manually when ready.'; }, 130000);
-})();
 
 // ── Resume Upload ─────────────────────────────────────
 (function(){
@@ -1714,7 +1102,7 @@ function hideSearchOverlay() {
                         document.getElementById('designation').value = data.role;
                     toast('Skills extracted — searching jobs now…', 'success');
                     fetchBtn.textContent = '🔍 Searching…';
-                    showSearchOverlay('Searching jobs…');
+                    showPageLoading('Resume parsed. Searching jobs across sources...');
                     form.submit();
                 } else {
                     toast('Could not extract skills — type them manually', 'error');
@@ -1730,110 +1118,97 @@ function hideSearchOverlay() {
     });
 })();
 
-// ── Bookmark Toggle ──────────────────────────────────
-function toggleBookmark(btn) {
-    var jobId = btn.getAttribute('data-job-id');
-    if (!jobId) return;
-    fetch('/api/bookmark', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({job_id: parseInt(jobId)})
-    }).then(r => r.json()).then(function(data) {
-        if (data.status === 'success') {
-            var saved = data.bookmarked;
-            btn.classList.toggle('bookmarked', saved);
-            btn.textContent = saved ? '🔖 Saved' : '🔖 Save';
-            btn.title = saved ? 'Remove bookmark' : 'Save for later';
-            toast(saved ? 'Job saved!' : 'Bookmark removed', saved ? 'success' : 'info');
-            updateSavedBadge();
-            // Refresh saved panel if it's currently visible
-            if (document.getElementById('saved-panel').style.display !== 'none') {
-                loadSavedJobs();
+// ── Form Submit Loading State ─────────────────────────
+(function(){
+    var form = document.getElementById('main-form');
+    if (!form) return;
+
+    function clearAllFiltersUI() {
+        // Clear only sidebar numeric filters.
+        // Do NOT clear designation, skills, or location chips/inputs.
+        form.querySelectorAll('input[name="years"], input[name="posted_within_days"]').forEach(function(el){
+            el.value = '';
+        });
+    }
+
+    var clearBtn = document.getElementById('clear-all-filters');
+    if (clearBtn) {
+        clearBtn.addEventListener('click', function(){
+            clearAllFiltersUI();
+            var fetchBtn = document.getElementById('fetch-btn');
+            if (fetchBtn) {
+                fetchBtn.disabled = false;
+                fetchBtn.textContent = 'Search Jobs';
+            }
+            hidePageLoading();
+        });
+    }
+
+    function commitPendingChipInput(typeInputId, hiddenId, acListId, acKind) {
+        var typeInput = document.getElementById(typeInputId);
+        var hidden = document.getElementById(hiddenId);
+        if (!typeInput || !hidden) return;
+
+        var raw = (typeInput.value || '').trim();
+        var acList = acListId ? document.getElementById(acListId) : null;
+        // If autocomplete is visible, promote the active/first suggestion to a full word.
+        if (acList && raw) {
+            var active = acList.querySelector('.ac-item.active');
+            var first = acList.querySelector('.ac-item');
+            var picked = active || first;
+            if (picked && picked.textContent) {
+                raw = picked.textContent.trim();
+                typeInput.value = raw;
             }
         }
-    }).catch(function() { toast('Error saving bookmark', 'error'); });
-}
+        if (!raw) return;
 
-// ── Tab Switching ─────────────────────────────────────
-function switchTab(tab) {
-    var tabJobs  = document.getElementById('tab-jobs');
-    var tabSaved = document.getElementById('tab-saved');
-    var jobsPanel  = document.getElementById('jobs-panel');
-    var savedPanel = document.getElementById('saved-panel');
-    if (tab === 'saved') {
-        tabJobs.style.borderBottomColor  = 'transparent';
-        tabJobs.style.color = '#64748b';
-        tabSaved.style.borderBottomColor = '#f59e0b';
-        tabSaved.style.color = '#b45309';
-        jobsPanel.style.display  = 'none';
-        savedPanel.style.display = 'block';
-        loadSavedJobs();
-    } else {
-        tabJobs.style.borderBottomColor  = '#0a66c2';
-        tabJobs.style.color = '#0a66c2';
-        tabSaved.style.borderBottomColor = 'transparent';
-        tabSaved.style.color = '#64748b';
-        jobsPanel.style.display  = '';
-        savedPanel.style.display = 'none';
-    }
-}
-
-function updateSavedBadge() {
-    fetch('/api/bookmarked-jobs')
-        .then(r => r.json())
-        .then(function(data) {
-            var badge = document.getElementById('saved-badge');
-            var count = (data.jobs || []).length;
-            if (badge) badge.textContent = count > 0 ? count : '';
-        });
-}
-
-function loadSavedJobs() {
-    var panel = document.getElementById('saved-panel');
-    panel.innerHTML = '<div style="padding:20px;color:#888;text-align:center;">⏳ Loading saved jobs…</div>';
-    fetch('/api/bookmarked-jobs')
-        .then(r => r.json())
-        .then(function(data) {
-            var jobs = data.jobs || [];
-            if (!jobs.length) {
-                panel.innerHTML = '<div class="saved-empty"><div class="icon">🔖</div>' +
-                    '<h3>No saved jobs yet</h3><p>Click <strong>🔖 Save</strong> on any job card to save it here.</p></div>';
-                return;
-            }
-            var html = '<div style="margin-bottom:12px;color:#64748b;font-size:.83rem;font-weight:600;">' +
-                       jobs.length + ' saved job' + (jobs.length !== 1 ? 's' : '') + '</div>';
-            jobs.forEach(function(job) {
-                var src = job.source || '';
-                var srcColor = src === 'LinkedIn' ? '#0a66c2' : '#ff6633';
-                var applyHtml = job.url ?
-                    '<a href="' + job.url + '" target="_blank" class="btn btn-primary" style="font-size:.78rem;padding:5px 12px;">Apply Now</a>' : '';
-                html += '<div class="job-card" style="margin-bottom:10px;">' +
-                    '<div class="card-top">' +
-                    '<div class="company-logo">' + (job.company ? job.company[0].toUpperCase() : '?') + '</div>' +
-                    '<div class="card-info">' +
-                    '<div class="job-title">' + (job.title || 'N/A') + '</div>' +
-                    '<div class="meta-row">' +
-                    '<span class="company-name">' + (job.company || 'N/A') + '</span>' +
-                    '<span class="meta-dot">·</span>' +
-                    '<span class="location-badge">📍 ' + (job.location || 'N/A') + '</span>' +
-                    '<span class="meta-dot">·</span>' +
-                    '<span style="color:' + srcColor + ';font-weight:700;font-size:.78rem;">' + src + '</span>' +
-                    '</div></div></div>' +
-                    '<div class="card-actions" style="margin-top:8px;">' +
-                    applyHtml +
-                    '<button type="button" class="btn btn-bookmark bookmarked" data-job-id="' + job.id + '" ' +
-                    'onclick="toggleBookmark(this)">🔖 Saved</button>' +
-                    '</div></div>';
+        var pending = raw.split(',').map(function(x){ return x.trim(); }).filter(Boolean);
+        if (window.pickAutocompleteSuggestion && acKind) {
+            pending = pending.map(function(v){
+                return window.pickAutocompleteSuggestion(acKind, v) || v;
             });
-            panel.innerHTML = html;
-        })
-        .catch(function() {
-            panel.innerHTML = '<div class="saved-empty"><p>Failed to load saved jobs.</p></div>';
-        });
-}
+        }
+        if (!pending.length) return;
 
-// Load saved badge count on page load
-document.addEventListener('DOMContentLoaded', updateSavedBadge);
+        var existing = (hidden.value || '').split(',').map(function(x){ return x.trim(); }).filter(Boolean);
+        var lower = existing.map(function(x){ return x.toLowerCase(); });
+
+        pending.forEach(function(v){
+            if (!lower.includes(v.toLowerCase())) {
+                existing.push(v);
+                lower.push(v.toLowerCase());
+            }
+        });
+
+        hidden.value = existing.join(', ');
+        typeInput.value = '';
+    }
+
+    form.addEventListener('submit', function(e){
+        // Ensure typed-but-not-confirmed chips are included in submit payload.
+        commitPendingChipInput('desig-type-input', 'designation-hidden', 'ac-designation', 'designations');
+        commitPendingChipInput('skill-type-input', 'skills-hidden', 'ac-skills', 'skills');
+        commitPendingChipInput('loc-type-input', 'location-hidden', 'ac-location', 'locations');
+
+        var submitter = e.submitter || document.activeElement;
+        if (submitter && submitter.classList && submitter.classList.contains('remove-btn')) {
+            return;
+        }
+
+        var msg = 'Searching jobs across LinkedIn and Naukri...';
+        if (submitter && submitter.classList && submitter.classList.contains('apply-filters-btn')) {
+            msg = 'Applying filters and refreshing results...';
+        }
+        showPageLoading(msg);
+
+        var fetchBtn = document.getElementById('fetch-btn');
+        if (fetchBtn) {
+            fetchBtn.disabled = true;
+            fetchBtn.textContent = '⏳ Searching…';
+        }
+    }, true);
+})();
 
 // ── Mark Applied ──────────────────────────────────────
 function markApplied(title, company, location, source, btn) {
@@ -1929,147 +1304,513 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
 (function() {
     var AC = { designations: [], skills: [], locations: [] };
 
-    // Load data from API; closures read AC lazily so all init
-    // functions can be called eagerly before data arrives.
+    // Expose a robust full-word picker so Enter/submit can avoid partial tokens.
+    window.pickAutocompleteSuggestion = function(kind, raw) {
+        var value = (raw || '').trim();
+        if (!value) return '';
+        var items = (AC && AC[kind]) ? AC[kind] : [];
+        if (!items.length) return value;
+
+        var q = value.toLowerCase();
+        var exact = items.find(function(x){ return (x || '').toLowerCase() === q; });
+        if (exact) return exact;
+
+        var starts = items.filter(function(x){ return (x || '').toLowerCase().startsWith(q); });
+        if (starts.length) return starts[0];
+
+        var contains = items.filter(function(x){ return (x || '').toLowerCase().includes(q); });
+        if (contains.length) return contains[0];
+
+        return value;
+    };
+
+    // Load suggestions from API — closures read AC lazily, so all
+    // init functions can be called eagerly; the data is available
+    // by the time the user first types.
     fetch('/api/autocomplete')
         .then(function(r){ return r.json(); })
-        .then(function(d){ AC = d; })
+        .then(function(d){
+            AC = d || { designations: [], skills: [], locations: [] };
+            // Safety net: never show numeric designation/title suggestions.
+            AC.designations = (AC.designations || []).filter(function(x){
+                return x && !/\d/.test(String(x));
+            });
+        })
         .catch(function(){});
 
-    // Position dropdown under its input
+    // ── Generic single-value autocomplete ───────────────
     function positionList(input, list) {
         var r = input.getBoundingClientRect();
-        list.style.top   = (r.bottom + window.scrollY + 4) + 'px';
-        list.style.left  = (r.left + window.scrollX) + 'px';
+        list.style.top   = (r.bottom + 4) + 'px';
+        list.style.left  = r.left + 'px';
         list.style.width = r.width + 'px';
     }
 
-    // Build a chip-input field
-    // getItems()  → array of suggestions
-    // onAdd(val)  → called when a chip is added (optional)
-    function makeChipInput(opts) {
-        var wrap   = document.getElementById(opts.wrapId);
-        var typeIn = document.getElementById(opts.inputId);
-        var hidden = document.getElementById(opts.hiddenId);
-        var acList = document.getElementById(opts.listId);
+    function makeAC(inputId, listId, getItems) {
+        var input = document.getElementById(inputId);
+        var list  = document.getElementById(listId);
+        if (!input || !list) return;
+        var active = -1;
+
+        function show(items) {
+            var q = input.value.trim().toLowerCase();
+            list.innerHTML = '';
+            active = -1;
+            var filtered;
+            if (q) {
+                filtered = items.filter(function(x){ return x.toLowerCase().includes(q); }).slice(0, 10);
+            } else {
+                // Show top 8 suggestions when field is focused but empty
+                filtered = items.slice(0, 8);
+            }
+            if (!filtered.length) { list.classList.remove('open'); return; }
+            filtered.forEach(function(item) {
+                var li = document.createElement('li');
+                li.className = 'ac-item';
+                if (q) {
+                    var idx = item.toLowerCase().indexOf(q);
+                    li.innerHTML = item.slice(0,idx) + '<mark>' + item.slice(idx, idx+q.length) + '</mark>' + item.slice(idx+q.length);
+                } else {
+                    li.textContent = item;
+                }
+                li.addEventListener('mousedown', function(e){
+                    e.preventDefault();
+                    input.value = item;
+                    list.classList.remove('open');
+                });
+                list.appendChild(li);
+            });
+            positionList(input, list);
+            list.classList.add('open');
+        }
+
+        input.addEventListener('input', function(){ show(getItems()); });
+        input.addEventListener('focus', function(){ show(getItems()); });   // always show on focus
+        input.addEventListener('blur',  function(){ setTimeout(function(){ list.classList.remove('open'); }, 150); });
+        input.addEventListener('keydown', function(e) {
+            var items = list.querySelectorAll('.ac-item');
+            if (e.key === 'ArrowDown') { active = Math.min(active+1, items.length-1); }
+            else if (e.key === 'ArrowUp') { active = Math.max(active-1, 0); }
+            else if (e.key === 'Enter' && active >= 0) {
+                e.preventDefault();
+                input.value = items[active].textContent;
+                list.classList.remove('open'); active = -1;
+            } else if (e.key === 'Escape') { list.classList.remove('open'); }
+            items.forEach(function(it, i){ it.classList.toggle('active', i===active); });
+        });
+    }
+
+    // designation, location, skills all use chip inputs below
+
+    // ── Designation tag-chip input ────────────────────────
+    var _desigChipsInit = false;
+    function initDesignationChips() {
+        if (_desigChipsInit) return;
+        _desigChipsInit = true;
+        var wrap   = document.getElementById('desig-tags-wrap');
+        var typeIn = document.getElementById('desig-type-input');
+        var hidden = document.getElementById('designation-hidden');
+        var acList = document.getElementById('ac-designation');
         if (!wrap || !typeIn || !hidden) return;
 
-        // Use '||' as internal separator so values containing commas (e.g. "Chennai, Tamil Nadu") are safe
-        var SEP = '||';
-
         var chips = [];
-
-        // Pre-fill from server-rendered value (may be comma-separated from old format)
         var initVal = hidden.value.trim();
         if (initVal) {
-            // Try new || separator first, fall back to comma for backwards compat
-            if (initVal.includes('||')) {
-                chips = initVal.split('||').map(function(s){ return s.trim(); }).filter(Boolean);
-            } else {
-                chips = initVal.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
-            }
+            chips = initVal.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
         }
+
+        // Expose setter so external controls (Clear all) can reset chip state safely.
+        window.setDesignationFromList = function(arr) {
+            chips = (arr || []).map(function(s){ return (s || '').trim(); }).filter(Boolean);
+            hidden.value = chips.join(', ');
+            renderChips();
+        };
 
         function renderChips() {
             wrap.querySelectorAll('.skill-tag-chip').forEach(function(el){ el.remove(); });
-            chips.forEach(function(val, i) {
+            chips.forEach(function(d, i) {
                 var chip = document.createElement('span');
                 chip.className = 'skill-tag-chip';
-                chip.innerHTML = val + ' <span class="rm" data-i="' + i + '">\u00d7</span>';
+                chip.innerHTML = d + ' <span class="rm" data-i="' + i + '">×</span>';
                 chip.querySelector('.rm').addEventListener('click', function(){
                     chips.splice(parseInt(this.getAttribute('data-i')), 1);
-                    hidden.value = chips.join(SEP);
+                    hidden.value = chips.join(', ');
                     renderChips();
                 });
                 wrap.insertBefore(chip, typeIn);
             });
         }
 
-        function addChip(val) {
-            val = val.trim();
-            if (!val) return;
-            var lower = chips.map(function(c){ return c.toLowerCase(); });
-            if (!lower.includes(val.toLowerCase())) {
-                chips.push(val);
-                hidden.value = chips.join(SEP);
+        function addDesignation(d) {
+            d = d.trim();
+            if (!d) return;
+            if (!chips.map(function(c){ return c.toLowerCase(); }).includes(d.toLowerCase())) {
+                chips.push(d);
+                hidden.value = chips.join(', ');
                 renderChips();
             }
             typeIn.value = '';
             if (acList) acList.classList.remove('open');
-            if (opts.onAdd) opts.onAdd(val);
         }
 
-        function showAC() {
+        function showDesigAC() {
             if (!acList) return;
-            var q      = typeIn.value.trim().toLowerCase();
-            var all    = opts.getItems();
-            var added  = chips.map(function(c){ return c.toLowerCase(); });
-            var filtered = q
-                ? all.filter(function(s){ return s.toLowerCase().includes(q) && !added.includes(s.toLowerCase()); }).slice(0, 12)
-                : all.filter(function(s){ return !added.includes(s.toLowerCase()); }).slice(0, 8);
-
+            var q = typeIn.value.trim().toLowerCase();
             acList.innerHTML = '';
+            var allDesigs = (AC.designations || []).filter(function(s){ return !/\d/.test(String(s)); });
+            var added = chips.map(function(c){ return c.toLowerCase(); });
+            var filtered;
+            if (q) {
+                filtered = allDesigs
+                    .filter(function(s){ return s.toLowerCase().includes(q) && !added.includes(s.toLowerCase()); })
+                    .map(function(s){
+                        var v = s.toLowerCase();
+                        var rank = 4;
+                        if (v === q) rank = 0;                    // exact phrase first
+                        else if (v.startsWith(q)) rank = 1;       // prefix next
+                        else if (v.includes(' ' + q)) rank = 2;   // word-boundary contains
+                        else rank = 3;                            // generic contains
+                        return { value: s, rank: rank };
+                    })
+                    .sort(function(a, b){
+                        if (a.rank !== b.rank) return a.rank - b.rank;
+                        return a.value.localeCompare(b.value);
+                    })
+                    .slice(0, 10)
+                    .map(function(x){ return x.value; });
+            } else {
+                filtered = allDesigs.filter(function(s){ return !added.includes(s.toLowerCase()); }).slice(0, 8);
+            }
             if (!filtered.length) { acList.classList.remove('open'); return; }
-
             filtered.forEach(function(item) {
                 var li = document.createElement('li');
                 li.className = 'ac-item';
                 if (q) {
                     var idx = item.toLowerCase().indexOf(q);
-                    li.innerHTML = item.slice(0, idx)
-                        + '<mark>' + item.slice(idx, idx + q.length) + '</mark>'
-                        + item.slice(idx + q.length);
+                    li.innerHTML = item.slice(0,idx) + '<mark>' + item.slice(idx,idx+q.length) + '</mark>' + item.slice(idx+q.length);
                 } else {
                     li.textContent = item;
                 }
-                li.addEventListener('mousedown', function(e){ e.preventDefault(); addChip(item); });
+                li.addEventListener('mousedown', function(e){ e.preventDefault(); addDesignation(item); });
+                li.addEventListener('mouseenter', function(){
+                    acList.querySelectorAll('.ac-item').forEach(function(it){ it.classList.remove('active'); });
+                    li.classList.add('active');
+                });
                 acList.appendChild(li);
             });
+            var firstItem = acList.querySelector('.ac-item');
+            if (firstItem) firstItem.classList.add('active');
             positionList(typeIn, acList);
             acList.classList.add('open');
         }
 
-        typeIn.addEventListener('input',  showAC);
-        typeIn.addEventListener('focus',  showAC);
-        typeIn.addEventListener('blur',   function(){ setTimeout(function(){ if (acList) acList.classList.remove('open'); }, 150); });
+        typeIn.addEventListener('input', showDesigAC);
+        typeIn.addEventListener('focus', showDesigAC);
+        typeIn.addEventListener('blur',  function(){ setTimeout(function(){ if (acList) acList.classList.remove('open'); }, 150); });
         typeIn.addEventListener('keydown', function(e) {
-            var items  = acList ? Array.from(acList.querySelectorAll('.ac-item')) : [];
-            var active = acList ? acList.querySelector('.active') : null;
-            var activeIdx = items.indexOf(active);
-            var isOpen = acList && acList.classList.contains('open') && items.length > 0;
-
-            // Comma triggers addChip for designation/skills but NOT for location
-            // (location values contain commas e.g. "Chennai, Tamil Nadu")
-            var commaTriggersChip = !opts.noCommaTrigger;
-
-            if (e.key === 'Enter' || (e.key === ',' && commaTriggersChip)) {
+            if (e.key === 'Enter') {
+                var active = acList ? acList.querySelector('.ac-item.active') : null;
+                var first = acList ? acList.querySelector('.ac-item') : null;
+                var picked = active || first;
+                if (picked) {
+                    e.preventDefault();
+                    addDesignation(picked.textContent.trim());
+                    return;
+                }
+                if (active) {
+                    e.preventDefault();
+                    addDesignation(active.textContent.trim());
+                    return;
+                }
                 e.preventDefault();
-                var pick = active ? active.textContent
-                         : isOpen ? items[0].textContent
-                         : typeIn.value.replace(',', '').trim();
-                if (pick) addChip(pick);
+                var v = typeIn.value.trim();
+                if (v) addDesignation(window.pickAutocompleteSuggestion('designations', v));
+            } else if (e.key === ',') {
+                e.preventDefault();
+                var v = typeIn.value.replace(',','').trim();
+                if (v) addDesignation(window.pickAutocompleteSuggestion('designations', v));
+            } else if (e.key === 'Backspace' && !typeIn.value && chips.length) {
+                chips.pop(); hidden.value = chips.join(', '); renderChips();
+            } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                var items = acList ? acList.querySelectorAll('.ac-item') : [];
+                var cur   = acList ? acList.querySelector('.active') : null;
+                var idx   = Array.from(items).indexOf(cur);
+                if (e.key === 'ArrowDown') idx = Math.min(idx+1, items.length-1);
+                else idx = Math.max(idx-1, 0);
+                items.forEach(function(it,i){ it.classList.toggle('active', i===idx); });
+                e.preventDefault();
+            } else if (e.key === 'Escape') {
+                if (acList) acList.classList.remove('open');
+            }
+        });
+        wrap.addEventListener('click', function(){ typeIn.focus(); });
+        renderChips();
+    }
 
-            } else if (e.key === 'Tab') {
-                var pick = active ? active.textContent
-                         : isOpen ? items[0].textContent
-                         : typeIn.value.trim();
-                if (pick) { e.preventDefault(); addChip(pick); }
+    // ── Skill tag-chip input ──────────────────────────────
+    var _skillChipsInit = false;
+    function initSkillChips() {
+        if (_skillChipsInit) return;   // guard against double-init
+        _skillChipsInit = true;
+        var wrap    = document.getElementById('skill-tags-wrap');
+        var typeIn  = document.getElementById('skill-type-input');
+        var hidden  = document.getElementById('skills-hidden');
+        var acList  = document.getElementById('ac-skills');
+        if (!wrap || !typeIn || !hidden) return;
 
+        var chips = [];  // array of skill strings currently in the field
+
+        // Expose for resume upload handler
+        window.setSkillsFromList = function(arr) {
+            chips = arr.map(function(s){ return s.trim(); }).filter(Boolean);
+            hidden.value = chips.join(', ');
+            renderChips();
+        };
+
+        // Initialise from server-rendered hidden value
+        var initVal = hidden.value.trim();
+        if (initVal) {
+            chips = initVal.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+        }
+
+        function renderChips() {
+            // Remove all chip elements (keep typeIn and acList)
+            wrap.querySelectorAll('.skill-tag-chip').forEach(function(el){ el.remove(); });
+            chips.forEach(function(sk, i) {
+                var chip = document.createElement('span');
+                chip.className = 'skill-tag-chip';
+                chip.innerHTML = sk + ' <span class="rm" data-i="' + i + '">×</span>';
+                chip.querySelector('.rm').addEventListener('click', function(){
+                    chips.splice(parseInt(this.getAttribute('data-i')), 1);
+                    hidden.value = chips.join(', ');
+                    renderChips();
+                });
+                wrap.insertBefore(chip, typeIn);
+            });
+        }
+
+        function addSkill(sk) {
+            sk = sk.trim();
+            if (!sk) return;
+            if (!chips.map(function(c){ return c.toLowerCase(); }).includes(sk.toLowerCase())) {
+                chips.push(sk);
+                hidden.value = chips.join(', ');
+                renderChips();
+            }
+            typeIn.value = '';
+            acList.classList.remove('open');
+        }
+
+        function showSkillAC() {
+            var q = typeIn.value.trim().toLowerCase();
+            acList.innerHTML = '';
+            var allSkills = AC.skills || [];
+            // Show suggestions that match and aren't already added
+            var added = chips.map(function(c){ return c.toLowerCase(); });
+            var filtered;
+            if (q) {
+                filtered = allSkills.filter(function(s){
+                    return s.toLowerCase().includes(q) && !added.includes(s.toLowerCase());
+                }).slice(0, 12);
+            } else {
+                // Show popular suggestions when field is focused but empty
+                filtered = allSkills.filter(function(s){ return !added.includes(s.toLowerCase()); }).slice(0, 8);
+            }
+            if (!filtered.length) { acList.classList.remove('open'); return; }
+            filtered.forEach(function(item) {
+                var li = document.createElement('li');
+                li.className = 'ac-item';
+                if (q) {
+                    var idx = item.toLowerCase().indexOf(q);
+                    li.innerHTML = item.slice(0,idx) + '<mark>' + item.slice(idx,idx+q.length) + '</mark>' + item.slice(idx+q.length);
+                } else {
+                    li.textContent = item;
+                }
+                li.addEventListener('mousedown', function(e){ e.preventDefault(); addSkill(item); });
+                li.addEventListener('mouseenter', function(){
+                    acList.querySelectorAll('.ac-item').forEach(function(it){ it.classList.remove('active'); });
+                    li.classList.add('active');
+                });
+                acList.appendChild(li);
+            });
+            var firstItem = acList.querySelector('.ac-item');
+            if (firstItem) firstItem.classList.add('active');
+            positionList(typeIn, acList);
+            acList.classList.add('open');
+        }
+
+        typeIn.addEventListener('input', showSkillAC);
+        typeIn.addEventListener('focus', showSkillAC);
+        typeIn.addEventListener('blur',  function(){ setTimeout(function(){ acList.classList.remove('open'); }, 150); });
+        typeIn.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                var active = acList.querySelector('.ac-item.active');
+                var first = acList.querySelector('.ac-item');
+                var picked = active || first;
+                if (picked) {
+                    e.preventDefault();
+                    addSkill(picked.textContent.trim());
+                    return;
+                }
+                if (active) {
+                    e.preventDefault();
+                    addSkill(active.textContent.trim());
+                    return;
+                }
+                e.preventDefault();
+                var v = typeIn.value.trim();
+                if (v) addSkill(window.pickAutocompleteSuggestion('skills', v));
+            } else if (e.key === ',') {
+                e.preventDefault();
+                var v = typeIn.value.replace(',','').trim();
+                if (v) addSkill(window.pickAutocompleteSuggestion('skills', v)); else return;
             } else if (e.key === 'Backspace' && !typeIn.value && chips.length) {
                 chips.pop();
-                hidden.value = chips.join(SEP);
+                hidden.value = chips.join(', ');
                 renderChips();
-
-            } else if (e.key === 'ArrowDown') {
+            } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                var items = acList.querySelectorAll('.ac-item');
+                var cur = acList.querySelector('.active');
+                var idx = Array.from(items).indexOf(cur);
+                if (e.key === 'ArrowDown') idx = Math.min(idx+1, items.length-1);
+                else idx = Math.max(idx-1, 0);
+                items.forEach(function(it,i){ it.classList.toggle('active', i===idx); });
                 e.preventDefault();
-                var next = Math.min(activeIdx + 1, items.length - 1);
-                items.forEach(function(it, i){ it.classList.toggle('active', i === next); });
+            }
+        });
 
-            } else if (e.key === 'ArrowUp') {
+        // Click on the wrap area focuses the input
+        wrap.addEventListener('click', function(){ typeIn.focus(); });
+
+        renderChips();
+    }
+
+    // ── Location tag-chip input ───────────────────────────
+    var _locChipsInit = false;
+    function initLocationChips() {
+        if (_locChipsInit) return;
+        _locChipsInit = true;
+        var wrap   = document.getElementById('loc-tags-wrap');
+        var typeIn = document.getElementById('loc-type-input');
+        var hidden = document.getElementById('location-hidden');
+        var acList = document.getElementById('ac-location');
+        if (!wrap || !typeIn || !hidden) return;
+
+        var chips = [];
+
+        var initVal = hidden.value.trim();
+        if (initVal) {
+            chips = initVal.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+        }
+
+        // Expose setter so external controls (Clear all) can reset chip state safely.
+        window.setLocationFromList = function(arr) {
+            chips = (arr || []).map(function(s){ return (s || '').trim(); }).filter(Boolean);
+            hidden.value = chips.join(', ');
+            renderChips();
+        };
+
+        function renderChips() {
+            wrap.querySelectorAll('.skill-tag-chip').forEach(function(el){ el.remove(); });
+            chips.forEach(function(loc, i) {
+                var chip = document.createElement('span');
+                chip.className = 'skill-tag-chip';
+                chip.innerHTML = loc + ' <span class="rm" data-i="' + i + '">×</span>';
+                chip.querySelector('.rm').addEventListener('click', function(){
+                    chips.splice(parseInt(this.getAttribute('data-i')), 1);
+                    hidden.value = chips.join(', ');
+                    renderChips();
+                });
+                wrap.insertBefore(chip, typeIn);
+            });
+        }
+
+        function addLocation(loc) {
+            loc = loc.trim();
+            if (!loc) return;
+            if (!chips.map(function(c){ return c.toLowerCase(); }).includes(loc.toLowerCase())) {
+                chips.push(loc);
+                hidden.value = chips.join(', ');
+                renderChips();
+            }
+            typeIn.value = '';
+            if (acList) acList.classList.remove('open');
+        }
+
+        function showLocAC() {
+            if (!acList) return;
+            var q = typeIn.value.trim().toLowerCase();
+            acList.innerHTML = '';
+            var allLocs = AC.locations || [];
+            var added = chips.map(function(c){ return c.toLowerCase(); });
+            var filtered;
+            if (q) {
+                filtered = allLocs.filter(function(s){
+                    return s.toLowerCase().includes(q) && !added.includes(s.toLowerCase());
+                }).slice(0, 10);
+            } else {
+                filtered = allLocs.filter(function(s){ return !added.includes(s.toLowerCase()); }).slice(0, 8);
+            }
+            if (!filtered.length) { acList.classList.remove('open'); return; }
+            filtered.forEach(function(item) {
+                var li = document.createElement('li');
+                li.className = 'ac-item';
+                if (q) {
+                    var idx = item.toLowerCase().indexOf(q);
+                    li.innerHTML = item.slice(0,idx) + '<mark>' + item.slice(idx,idx+q.length) + '</mark>' + item.slice(idx+q.length);
+                } else {
+                    li.textContent = item;
+                }
+                li.addEventListener('mousedown', function(e){ e.preventDefault(); addLocation(item); });
+                li.addEventListener('mouseenter', function(){
+                    acList.querySelectorAll('.ac-item').forEach(function(it){ it.classList.remove('active'); });
+                    li.classList.add('active');
+                });
+                acList.appendChild(li);
+            });
+            var firstItem = acList.querySelector('.ac-item');
+            if (firstItem) firstItem.classList.add('active');
+            positionList(typeIn, acList);
+            acList.classList.add('open');
+        }
+
+        typeIn.addEventListener('input', showLocAC);
+        typeIn.addEventListener('focus', showLocAC);
+        typeIn.addEventListener('blur',  function(){ setTimeout(function(){ if (acList) acList.classList.remove('open'); }, 150); });
+        typeIn.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                var active = acList ? acList.querySelector('.ac-item.active') : null;
+                var first = acList ? acList.querySelector('.ac-item') : null;
+                var picked = active || first;
+                if (picked) {
+                    e.preventDefault();
+                    addLocation(picked.textContent.trim());
+                    return;
+                }
+                if (active) {
+                    e.preventDefault();
+                    addLocation(active.textContent.trim());
+                    return;
+                }
                 e.preventDefault();
-                var prev = Math.max(activeIdx - 1, 0);
-                items.forEach(function(it, i){ it.classList.toggle('active', i === prev); });
-
+                var v = typeIn.value.trim();
+                if (v) addLocation(window.pickAutocompleteSuggestion('locations', v));
+            } else if (e.key === ',') {
+                e.preventDefault();
+                var v = typeIn.value.replace(',','').trim();
+                if (v) addLocation(window.pickAutocompleteSuggestion('locations', v));
+            } else if (e.key === 'Backspace' && !typeIn.value && chips.length) {
+                chips.pop();
+                hidden.value = chips.join(', ');
+                renderChips();
+            } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                var items = acList ? acList.querySelectorAll('.ac-item') : [];
+                var cur   = acList ? acList.querySelector('.active') : null;
+                var idx   = Array.from(items).indexOf(cur);
+                if (e.key === 'ArrowDown') idx = Math.min(idx+1, items.length-1);
+                else idx = Math.max(idx-1, 0);
+                items.forEach(function(it,i){ it.classList.toggle('active', i===idx); });
+                e.preventDefault();
             } else if (e.key === 'Escape') {
                 if (acList) acList.classList.remove('open');
             }
@@ -2077,126 +1818,12 @@ document.querySelectorAll('.ats-sc-btn').forEach(function(btn){
 
         wrap.addEventListener('click', function(){ typeIn.focus(); });
         renderChips();
-
-        // Expose setter for external use (e.g. resume upload)
-        if (opts.expose) {
-            window[opts.expose] = function(arr) {
-                chips = arr.map(function(s){ return s.trim(); }).filter(Boolean);
-                hidden.value = chips.join(SEP);
-                renderChips();
-            };
-        }
     }
 
-    // ── Initialise each field ────────────────────────────
-    var _initDone = false;
-    function initAll() {
-        if (_initDone) return;
-        _initDone = true;
-
-        makeChipInput({
-            wrapId:   'desig-tags-wrap',
-            inputId:  'desig-type-input',
-            hiddenId: 'designation-hidden',
-            listId:   'ac-designation',
-            getItems: function(){ return AC.designations || []; }
-        });
-
-        makeChipInput({
-            wrapId:   'skill-tags-wrap',
-            inputId:  'skill-type-input',
-            hiddenId: 'skills-hidden',
-            listId:   'ac-skills',
-            getItems: function(){ return AC.skills || []; },
-            expose:   'setSkillsFromList'
-        });
-
-        makeChipInput({
-            wrapId:   'loc-tags-wrap',
-            inputId:  'loc-type-input',
-            hiddenId: 'location-hidden',
-            listId:   'ac-location',
-            getItems: function(){ return AC.locations || []; },
-            noCommaTrigger: false  // location values no longer contain commas
-        });
-    }
-
-    initAll();
-})();
-
-// ── Validate job before opening Apply link ─────────────────
-function validateAndApply(event, btn) {
-    event.preventDefault();
-    const url = btn.getAttribute('data-url');
-    const jobId = btn.getAttribute('data-job-id');
-    if (!jobId) { window.open(url, '_blank'); return; }
-
-    const origText = btn.textContent;
-    btn.textContent = '⏳ Checking…';
-    btn.disabled = true;
-
-    fetch(`/api/validate-job/${jobId}`)
-        .then(r => r.json())
-        .then(data => {
-            if (data.active === false) {
-                // Remove card from UI and show toast
-                const card = btn.closest('.job-card');
-                if (card) {
-                    card.style.transition = 'opacity .4s';
-                    card.style.opacity = '0';
-                    setTimeout(() => card.remove(), 400);
-                }
-                showExpiredToast();
-            } else {
-                window.open(url, '_blank');
-                btn.textContent = origText;
-                btn.disabled = false;
-            }
-        })
-        .catch(() => {
-            // On any network error, open anyway
-            window.open(url, '_blank');
-            btn.textContent = origText;
-            btn.disabled = false;
-        });
-}
-
-function showExpiredToast() {
-    let toast = document.getElementById('expired-toast');
-    if (!toast) {
-        toast = document.createElement('div');
-        toast.id = 'expired-toast';
-        toast.style.cssText = `position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
-            background:#dc2626;color:#fff;padding:12px 24px;border-radius:10px;font-weight:600;
-            font-size:.9rem;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.3);`;
-        toast.textContent = '⚠️ This job is no longer accepting applications and has been removed.';
-        document.body.appendChild(toast);
-    }
-    toast.style.display = 'block';
-    setTimeout(() => { toast.style.display = 'none'; }, 4000);
-}
-</script>
-
-<script>
-// ── Dark Mode ──────────────────────────────────────────
-(function() {
-    const saved = localStorage.getItem('theme') || 'light';
-    applyTheme(saved);
-})();
-
-function applyTheme(theme) {
-    document.documentElement.setAttribute('data-theme', theme);
-    const icon  = document.getElementById('theme-icon');
-    const label = document.getElementById('theme-label');
-    if (icon)  icon.textContent  = theme === 'dark' ? '☀️' : '🌙';
-    if (label) label.textContent = theme === 'dark' ? 'Light' : 'Dark';
-    localStorage.setItem('theme', theme);
-}
-
-function toggleTheme() {
-    const current = document.documentElement.getAttribute('data-theme') || 'light';
-    applyTheme(current === 'dark' ? 'light' : 'dark');
-}
-</script>
+    // ── Initialise all inputs eagerly ─────────────────────
+    initDesignationChips();
+    initSkillChips();
+    initLocationChips();
+})();</script>
 </body>
 </html>

@@ -1,281 +1,156 @@
 from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify, session
-from job_agent import JobAIAgent, get_search_status
+from functools import wraps
+from job_agent import JobAIAgent
 from job_fetcher import find_common_jobs
 from job_db import (init_db, mark_job_applied, get_job_applications_status, get_job_by_id,
                     get_applied_count, get_applied_jobs, get_daily_applied_stats,
                     backfill_skills_from_descriptions, get_jobs_needing_jd_fetch,
                     batch_update_job_skills, _extract_skills_from_text, update_job_description,
                     check_and_mark_expired_jobs, get_new_jobs_count, update_application_status,
-                    mark_job_status, get_lifecycle_stats, bulk_mark_expired_from_text,
-                    verify_new_jobs_for_expiry, upsert_google_user, get_user_by_id,
-                    register_user, get_user_by_email, update_last_login, update_user_profile,
-                    _decode_cred, toggle_bookmark, get_bookmarked_jobs, upsert_saved_search)
+                    mark_job_status, get_lifecycle_stats)
 import os
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from auto_apply_bot import run_auto_apply
 from cv_generator import build_tailored_pdf, extract_skills_from_cv, extract_text_from_pdf, tailor_cv_smart
 from ai_matcher import generate_ai_match_report, generate_ats_scorecard
 from jd_scraper import scrape_jd_text
-from dotenv import load_dotenv
-
-load_dotenv()
+import sqlite3
 
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 app = Flask(__name__, template_folder=os.path.join(_BASE_DIR, "templates"))
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret-change-in-production")
+app.secret_key = os.environ.get("APP_SECRET_KEY", "secret_jobs_key_change_me")
 
-# ── Google OAuth (Flask-Dance) ───────────────────────────────────────────────
-_GOOGLE_CLIENT_ID     = os.environ.get("GOOGLE_CLIENT_ID", "")
-_GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
-_SSO_ENABLED = bool(_GOOGLE_CLIENT_ID and _GOOGLE_CLIENT_SECRET)
+# ── Credentials (override via env vars in production) ──────────────
+APP_USERNAME = os.environ.get("APP_USERNAME", "admin")
+APP_PASSWORD = os.environ.get("APP_PASSWORD", "admin123")
 
-if _SSO_ENABLED:
-    from flask_dance.contrib.google import make_google_blueprint, google
-    from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
+# ── Billing / rate limits (override via env vars) ───────────────────
+FREE_DAILY_SEARCH_LIMIT = int(os.environ.get("FREE_DAILY_SEARCH_LIMIT", "5"))
+PAID_DAILY_SEARCH_LIMIT = int(os.environ.get("PAID_DAILY_SEARCH_LIMIT", "200"))
+PAYMENT_LINK_URL = os.environ.get("PAYMENT_LINK_URL", "")
+DEFAULT_SUBSCRIPTION_DAYS = int(os.environ.get("DEFAULT_SUBSCRIPTION_DAYS", "30"))
+PAYMENT_SUCCESS_TOKEN = os.environ.get("PAYMENT_SUCCESS_TOKEN", "")
 
-    google_bp = make_google_blueprint(
-        client_id=_GOOGLE_CLIENT_ID,
-        client_secret=_GOOGLE_CLIENT_SECRET,
-        scope=["openid", "https://www.googleapis.com/auth/userinfo.email",
-               "https://www.googleapis.com/auth/userinfo.profile"],
-        redirect_to="google_authorized",
+
+def _billing_db_path():
+    return os.path.join(_BASE_DIR, "..", "jobs.db")
+
+
+def _init_billing_tables():
+    conn = sqlite3.connect(_billing_db_path())
+    c = conn.cursor()
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS user_subscriptions (
+            username TEXT PRIMARY KEY,
+            plan TEXT NOT NULL DEFAULT 'free',
+            paid_until TEXT,
+            updated_at TEXT
+        )
+        """
     )
-    app.register_blueprint(google_bp, url_prefix="/login")
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS user_daily_usage (
+            username TEXT NOT NULL,
+            usage_date TEXT NOT NULL,
+            action TEXT NOT NULL,
+            usage_count INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT,
+            PRIMARY KEY (username, usage_date, action)
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
 
-    login_manager = LoginManager()
-    login_manager.login_view = "login_page"
-    login_manager.init_app(app)
 
-    class User(UserMixin):
-        def __init__(self, user_row):
-            self.id = str(user_row["id"])
-            self.email = user_row["email"]
-            self.name = user_row.get("name") or user_row["email"].split("@")[0]
-            self.picture = user_row.get("picture") or ""
+def _get_user_subscription(username):
+    conn = sqlite3.connect(_billing_db_path())
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute("SELECT username, plan, paid_until FROM user_subscriptions WHERE username=?", (username,))
+    row = c.fetchone()
+    conn.close()
 
-    _UserObj = User  # alias used in shared routes below
+    if not row:
+        return {"plan": "free", "paid_until": None, "is_paid": False}
 
-    @login_manager.user_loader
-    def load_user(user_id):
-        row = get_user_by_id(int(user_id))
-        return User(row) if row else None
-
-    @app.route("/google-authorized")
-    def google_authorized():
-        if not google.authorized:
-            return redirect(url_for("google.login"))
+    paid_until = row["paid_until"]
+    is_paid = False
+    if paid_until:
         try:
-            resp = google.get("/oauth2/v2/userinfo")
-            if not resp.ok:
-                return redirect(url_for("login_page", error="Google login failed. Try again."))
-            info = resp.json()
-            user_row = upsert_google_user(
-                google_id=info["id"],
-                email=info.get("email", ""),
-                name=info.get("name", ""),
-                picture=info.get("picture", ""),
-            )
-            if user_row:
-                login_user(User(user_row), remember=True)
-        except Exception as e:
-            return redirect(url_for("login_page", error=f"Login error: {e}"))
-        return redirect(url_for("index"))
-
-else:
-    # SSO not configured — login_required is a no-op (dev mode), no google.login
-    def login_required(f):
-        from functools import wraps
-        @wraps(f)
-        def decorated(*args, **kwargs):
-            if not session.get("user_id"):
-                return redirect(url_for("login_page"))
-            return f(*args, **kwargs)
-        return decorated
-    # Stub current_user so shared routes can reference it safely
-    class _FakeCU:
-        is_authenticated = False
-        name = ""
-        email = ""
-        picture = ""
-    current_user = _FakeCU()
-    class _UserObj:
-        pass
-
-# ── Login / Register / Logout routes (shared for SSO + email+pw) ────────────
-from werkzeug.security import generate_password_hash, check_password_hash
-
-@app.route("/login", methods=["GET", "POST"])
-def login_page():
-    if _SSO_ENABLED and current_user.is_authenticated:
-        return redirect(url_for("index"))
-    if request.method == "POST":
-        email = request.form.get("email", "").strip().lower()
-        password = request.form.get("password", "")
-        user_row = get_user_by_email(email)
-        if not user_row:
-            return render_template("login.html", error="No account found with this email. Please register.",
-                                   prefill_email=email, sso_enabled=_SSO_ENABLED)
-        if user_row.get("auth_type") == "google":
-            return render_template("login.html", error="This email is linked to Google Sign-In. Use the Google button below.",
-                                   prefill_email=email, sso_enabled=_SSO_ENABLED)
-        if not check_password_hash(user_row.get("password_hash", ""), password):
-            return render_template("login.html", error="Incorrect password. Please try again.",
-                                   prefill_email=email, sso_enabled=_SSO_ENABLED)
-        update_last_login(user_row["id"])
-        if _SSO_ENABLED:
-            from flask_login import login_user as _login_user
-            _login_user(_UserObj(user_row), remember=True)
-        else:
-            session["user_id"] = user_row["id"]
-        return redirect(url_for("index"))
-    error = request.args.get("error", "")
-    success = request.args.get("success", "")
-    return render_template("login.html", error=error, success=success, sso_enabled=_SSO_ENABLED)
+            is_paid = datetime.utcnow().date() <= datetime.strptime(paid_until, "%Y-%m-%d").date()
+        except Exception:
+            is_paid = False
+    return {"plan": row["plan"] or "free", "paid_until": paid_until, "is_paid": is_paid}
 
 
-@app.route("/register", methods=["GET", "POST"])
-def register_page():
-    if _SSO_ENABLED and current_user.is_authenticated:
-        return redirect(url_for("index"))
-    prefill = {}
-    if request.method == "POST":
-        name = request.form.get("name", "").strip()
-        email = request.form.get("email", "").strip().lower()
-        password = request.form.get("password", "")
-        confirm = request.form.get("confirm_password", "")
-        phone = request.form.get("phone", "").strip() or None
-        prefill = {"name": name, "email": email, "phone": phone or ""}
-        if not name or not email or not password:
-            return render_template("register.html", error="Please fill in all required fields.",
-                                   prefill=prefill, sso_enabled=_SSO_ENABLED)
-        if len(password) < 8:
-            return render_template("register.html", error="Password must be at least 8 characters.",
-                                   prefill=prefill, sso_enabled=_SSO_ENABLED)
-        if password != confirm:
-            return render_template("register.html", error="Passwords do not match.",
-                                   prefill=prefill, sso_enabled=_SSO_ENABLED)
-        pw_hash = generate_password_hash(password)
-        user_row, err = register_user(name, email, pw_hash, phone)
-        if err:
-            return render_template("register.html", error=err,
-                                   prefill=prefill, sso_enabled=_SSO_ENABLED)
-        if _SSO_ENABLED:
-            from flask_login import login_user as _login_user
-            _login_user(_UserObj(user_row), remember=True)
-            return redirect(url_for("index"))
-        else:
-            session["user_id"] = user_row["id"]
-            return redirect(url_for("index"))
-    return render_template("register.html", error="", prefill=prefill, sso_enabled=_SSO_ENABLED)
+def _get_daily_usage(username, action="job_search"):
+    today = datetime.utcnow().date().isoformat()
+    conn = sqlite3.connect(_billing_db_path())
+    c = conn.cursor()
+    c.execute(
+        "SELECT usage_count FROM user_daily_usage WHERE username=? AND usage_date=? AND action=?",
+        (username, today, action),
+    )
+    row = c.fetchone()
+    conn.close()
+    return int(row[0]) if row else 0
 
 
-@app.route("/logout")
-def logout():
-    if _SSO_ENABLED:
-        from flask_login import logout_user as _logout_user
-        _logout_user()
-        if "google_oauth_token" in session:
-            del session["google_oauth_token"]
-    else:
-        session.pop("user_id", None)
-    return redirect(url_for("login_page"))
+def _increment_daily_usage(username, action="job_search"):
+    today = datetime.utcnow().date().isoformat()
+    now = datetime.utcnow().isoformat()
+    conn = sqlite3.connect(_billing_db_path())
+    c = conn.cursor()
+    c.execute(
+        """
+        INSERT INTO user_daily_usage (username, usage_date, action, usage_count, updated_at)
+        VALUES (?, ?, ?, 1, ?)
+        ON CONFLICT(username, usage_date, action)
+        DO UPDATE SET usage_count = usage_count + 1, updated_at = excluded.updated_at
+        """,
+        (username, today, action, now),
+    )
+    conn.commit()
+    conn.close()
 
 
-@app.route("/account-settings", methods=["GET", "POST"])
-@login_required
-def account_settings():
-    cu = _get_current_user()
-    uid = session.get("user_id") if not _SSO_ENABLED else (cu.id if hasattr(cu, "id") else None)
-    user_row = get_user_by_id(int(uid)) if uid else None
-    if not user_row:
-        return redirect(url_for("login_page"))
-
-    error, success = "", ""
-    if request.method == "POST":
-        action = request.form.get("action", "profile")
-        if action == "profile":
-            name         = request.form.get("name", "").strip()
-            email        = request.form.get("email", "").strip().lower()
-            phone        = request.form.get("phone", "").strip()
-            linkedin_url = request.form.get("linkedin_url", "").strip()
-            naukri_url   = request.form.get("naukri_url", "").strip()
-            if not name:
-                error = "Name cannot be empty."
-            elif not email or "@" not in email:
-                error = "Please enter a valid email address."
-            else:
-                user_row, err = update_user_profile(
-                    uid, name=name, email=email,
-                    phone=phone or None, linkedin_url=linkedin_url, naukri_url=naukri_url)
-                if err:
-                    error = err
-                else:
-                    success = "Profile updated successfully."
-                    if _SSO_ENABLED:
-                        from flask_login import login_user as _login_user
-                        _login_user(_UserObj(user_row), remember=True)
-
-        elif action == "social":
-            li_email  = request.form.get("linkedin_email", "").strip()
-            li_pass   = request.form.get("linkedin_password", "")
-            nk_email  = request.form.get("naukri_email", "").strip()
-            nk_pass   = request.form.get("naukri_password", "")
-            user_row, err = update_user_profile(
-                uid,
-                linkedin_email=li_email or None,
-                linkedin_password=li_pass if li_pass else None,
-                naukri_email=nk_email or None,
-                naukri_password=nk_pass if nk_pass else None,
-            )
-            error = err or ""
-            if not err:
-                success = "Social account credentials saved."
-
-        elif action == "password":
-            if user_row.get("auth_type") == "google":
-                error = "Password cannot be changed for Google Sign-In accounts."
-            else:
-                current_pw  = request.form.get("current_password", "")
-                new_pw      = request.form.get("new_password", "")
-                confirm_pw  = request.form.get("confirm_password", "")
-                if not check_password_hash(user_row.get("password_hash", ""), current_pw):
-                    error = "Current password is incorrect."
-                elif len(new_pw) < 8:
-                    error = "New password must be at least 8 characters."
-                elif new_pw != confirm_pw:
-                    error = "New passwords do not match."
-                else:
-                    user_row, err = update_user_profile(uid, new_password_hash=generate_password_hash(new_pw))
-                    error = err or ""
-                    if not err:
-                        success = "Password changed successfully."
-
-    return render_template("account_settings.html", user=user_row, error=error,
-                           success=success, sso_enabled=_SSO_ENABLED,
-                           current_user=_get_current_user())
+def _get_user_limit_state(username, action="job_search"):
+    sub = _get_user_subscription(username)
+    usage = _get_daily_usage(username, action=action)
+    limit = PAID_DAILY_SEARCH_LIMIT if sub["is_paid"] else FREE_DAILY_SEARCH_LIMIT
+    remaining = max(0, limit - usage)
+    blocked = usage >= limit
+    return {
+        "is_paid": sub["is_paid"],
+        "plan": "paid" if sub["is_paid"] else "free",
+        "paid_until": sub.get("paid_until"),
+        "daily_limit": limit,
+        "daily_usage": usage,
+        "remaining": remaining,
+        "blocked": blocked,
+    }
 
 
-# Helper: get current user for non-SSO mode
-def _get_current_user():
-    if _SSO_ENABLED:
-        return current_user
-    uid = session.get("user_id")
-    if uid:
-        row = get_user_by_id(uid)
-        if row:
-            return type("U", (), {"is_authenticated": True, "name": row.get("name",""),
-                                   "email": row.get("email",""), "picture": row.get("picture","")})()
-    return type("U", (), {"is_authenticated": False, "name": "", "email": "", "picture": ""})()
-
-app.secret_key = "secret_jobs_key"
+def login_required(f):
+    """Decorator: redirect to /login if user is not authenticated."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get("logged_in"):
+            return redirect(url_for("login", next=request.path))
+        return f(*args, **kwargs)
+    return decorated
 
 def _startup_background_work():
     """On startup: backfill skills, fetch missing JDs, then run stale-job checker."""
     try:
         init_db()
+        _init_billing_tables()
         # Step 1: extract skills from all cached descriptions + snippets
         n = backfill_skills_from_descriptions()
         if n:
@@ -289,12 +164,7 @@ def _startup_background_work():
         for job in jobs_to_fetch:
             try:
                 time.sleep(1.2)
-                jd_text, _expired = scrape_jd_text(job["url"], job["source"].lower())
-                if _expired:
-                    from job_db import mark_job_status
-                    mark_job_status(job["id"], "expired")
-                    continue
-                jd_text = jd_text or ""
+                jd_text = scrape_jd_text(job["url"], job["source"].lower()) or ""
                 if jd_text and len(jd_text) > 100:
                     extracted = _extract_skills_from_text(jd_text)
                     skills_str = ",".join(sorted(set(extracted))) if extracted else ""
@@ -308,17 +178,6 @@ def _startup_background_work():
             if n2:
                 print(f"[startup] Post-fetch backfill updated {n2} more jobs.")
 
-        # Step 3: bulk mark existing DB jobs expired based on text signals (fast, no HTTP)
-        cleaned = bulk_mark_expired_from_text()
-        if cleaned:
-            print(f"[lifecycle] Bulk-marked {cleaned} existing jobs as expired (text signals).")
-
-        # Step 4: verify brand-new LinkedIn jobs (never checked) for expiry
-        new_expired = verify_new_jobs_for_expiry(limit=30)
-        if new_expired:
-            print(f"[lifecycle] Removed {new_expired} newly-fetched jobs already closed on LinkedIn.")
-
-        # Step 5: check for expired/filled jobs via HTTP (throttled, 20 per startup)
         # Step 3: check for expired/filled jobs (throttled, 20 per startup)
         result = check_and_mark_expired_jobs(limit=20)
         if result["checked"]:
@@ -329,25 +188,32 @@ def _startup_background_work():
 
 threading.Thread(target=_startup_background_work, daemon=True).start()
 
-
-def _continuous_expired_checker():
-    """Background thread: every 5 minutes check 50 jobs for expiry."""
-    time.sleep(60)  # wait 1 min after startup before first run
-    while True:
-        try:
-            result = check_and_mark_expired_jobs(limit=50)
-            if result.get("expired"):
-                print(f"[lifecycle] Continuous checker: {result['expired']} jobs marked expired.")
-        except Exception as e:
-            print(f"[lifecycle] Continuous checker error: {e}")
-        time.sleep(300)  # run every 5 minutes
-
-threading.Thread(target=_continuous_expired_checker, daemon=True).start()
-
 # Default skills for the UI (empty — skills are extracted from uploaded resume)
 DEFAULT_SKILLS = []
 
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    error = None
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '').strip()
+        if username == APP_USERNAME and password == APP_PASSWORD:
+            session['logged_in'] = True
+            session['username'] = username
+            next_url = request.form.get('next') or url_for('index')
+            return redirect(next_url)
+        error = 'Invalid username or password.'
+    return render_template('login.html', error=error, next=request.args.get('next', ''))
+
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
+
+
 @app.route('/upload-resume', methods=['POST'])
+@login_required
 def upload_resume():
     """AJAX endpoint: saves the uploaded PDF resume and returns extracted skills as JSON."""
     resume_file = request.files.get('resume')
@@ -369,6 +235,8 @@ def upload_resume():
 @app.route('/', methods=['GET', 'POST'])
 @login_required
 def index():
+    init_db()
+    _init_billing_tables()
     skills = DEFAULT_SKILLS
     jobs = []
     common_jobs = []
@@ -378,43 +246,41 @@ def index():
     experience_years = None
     posted_within_days = None
     did_submit = False
-    search_id = None
-
+    rate_limit_message = ""
+    username = session.get("username", "guest")
+    limit_state = _get_user_limit_state(username, action="job_search")
     if request.method == 'POST':
         did_submit = True
 
-        # Chips use '||' as separator to safely handle values with commas (e.g. "Chennai, Tamil Nadu")
-        raw_skills = request.form.get('skills', '')
-        skills = [s.strip().lower() for s in raw_skills.replace('||', ',').split(',') if s.strip()]
-
-        raw_location = request.form.get('location', '').strip()
-        location_filter = raw_location.strip() if raw_location else ''
-
-        raw_desig = request.form.get('designation', '').strip()
-        designation_filter = raw_desig.replace('||', ',').strip().lower()
-
-        years_raw = (request.form.get('years') or '').strip()
-        if years_raw:
-            try:
-                experience_years = int(years_raw)
-            except ValueError:
-                experience_years = None
-
-        posted_raw = (request.form.get('posted_within_days') or '').strip()
-        if posted_raw:
-            try:
-                posted_within_days = int(posted_raw)
-            except ValueError:
-                posted_within_days = None
-
-        # Require at least one search field — show nothing if all are blank
-        if not designation_filter and not skills and not location_filter:
-            did_submit = False  # treat as if no search was done
+        # Enforce per-user daily quota before running expensive fetch calls.
+        if limit_state["blocked"]:
+            rate_limit_message = (
+                f"Daily limit reached ({limit_state['daily_usage']}/{limit_state['daily_limit']}). "
+                "Upgrade to continue searching today."
+            )
         else:
-            # Generate a unique search_id for this request so JS can poll status
-            import uuid
-            search_id = str(uuid.uuid4())
-            session['last_search_id'] = search_id
+            _increment_daily_usage(username, action="job_search")
+            limit_state = _get_user_limit_state(username, action="job_search")
+
+            # Skills come from the form field (already pre-filled by AJAX /upload-resume)
+            skills = [s.strip().lower() for s in request.form.get('skills', '').split(',') if s.strip()]
+
+
+            location_filter = request.form.get('location', '').strip().lower()
+            designation_filter = request.form.get('designation', '').strip().lower()
+            years_raw = (request.form.get('years') or '').strip()
+            if years_raw:
+                try:
+                    experience_years = int(years_raw)
+                except ValueError:
+                    experience_years = None
+
+            posted_raw = (request.form.get('posted_within_days') or '').strip()
+            if posted_raw:
+                try:
+                    posted_within_days = int(posted_raw)
+                except ValueError:
+                    posted_within_days = None
 
             agent = JobAIAgent(
                 skills,
@@ -423,29 +289,12 @@ def index():
                 experience_years=experience_years,
                 posted_within_days=posted_within_days,
             )
-            # Pass stored social credentials so fetcher auto-logs in
-            _cu_row = get_user_by_id(session.get("user_id") or 0) or {}
-            try:
-                agent.fetch_and_summarize(
-                    search_id=search_id,
-                    credentials={
-                        "linkedin_email":    _cu_row.get("linkedin_email") or "",
-                        "linkedin_password": _decode_cred(_cu_row.get("linkedin_password") or ""),
-                        "naukri_email":      _cu_row.get("naukri_email") or "",
-                        "naukri_password":   _decode_cred(_cu_row.get("naukri_password") or ""),
-                    }
-                )
-            except Exception as _e:
-                import traceback
-                print(f"[ERROR] fetch_and_summarize failed: {_e}")
-                traceback.print_exc()
-            # Persist this search so the 6-hour scheduler can re-run it
-            try:
-                upsert_saved_search(designation_filter, skills, location_filter)
-            except Exception:
-                pass
+            agent.fetch_and_summarize()
             jobs = agent.get_jobs()
-            print(f"[SEARCH] desig={designation_filter!r} loc={location_filter!r} skills={skills} → {len(jobs)} jobs")
+
+            # Removed the strict local text fallback filter.
+            # Platforms like Naukri return City/State names (e.g. "Bangalore"),
+            # preventing a strict "india" substring match from working correctly.
             common_jobs = find_common_jobs(jobs)
         
     # Enrich jobs with applied status from DB
@@ -458,6 +307,8 @@ def index():
     has_resume = os.path.exists(resume_path)
     applied_count = get_applied_count()
     new_jobs_count = get_new_jobs_count(hours=24)
+    from datetime import timedelta
+    now_date = (datetime.utcnow() - timedelta(hours=24)).strftime('%Y-%m-%d')
 
     return render_template(
         'index.html',
@@ -473,12 +324,18 @@ def index():
         has_resume=has_resume,
         applied_count=applied_count,
         new_jobs_count=new_jobs_count,
-        current_user=_get_current_user(),
-        search_id=search_id,
+        now_date=now_date,
+        usage_daily_limit=limit_state["daily_limit"],
+        usage_daily_count=limit_state["daily_usage"],
+        usage_plan=limit_state["plan"],
+        usage_blocked=limit_state["blocked"],
+        rate_limit_message=rate_limit_message,
+        payment_link_url=PAYMENT_LINK_URL,
     )
 
 
 @app.route('/apply-async', methods=['POST'])
+@login_required
 def apply_job_async():
     data = request.get_json()
     if data:
@@ -494,22 +351,8 @@ def apply_job_async():
     return {"status": "error"}, 400
 
 
-@app.route('/api/search-status/<search_id>')
-@login_required
-def api_search_status(search_id):
-    """Poll endpoint: returns {status, count, elapsed} for a background fetch."""
-    state = get_search_status(search_id)
-    if not state:
-        return jsonify({"status": "unknown"})
-    elapsed = round(time.time() - state.get('started', time.time()), 1)
-    return jsonify({
-        "status":  state.get('status', 'running'),
-        "count":   state.get('count', 0),
-        "elapsed": elapsed,
-    })
-
-
 @app.route('/api/update-application-status', methods=['POST'])
+@login_required
 def api_update_application_status():
     """Update application outcome for a job (shortlisted / rejected / no_response)."""
     data = request.get_json() or {}
@@ -524,6 +367,7 @@ def api_update_application_status():
 
 
 @app.route('/api/mark-job-status', methods=['POST'])
+@login_required
 def api_mark_job_status():
     """Manually mark a job as expired / filled / active."""
     data = request.get_json() or {}
@@ -537,39 +381,18 @@ def api_mark_job_status():
     return jsonify({"status": "success"})
 
 
-@app.route('/api/bookmark', methods=['POST'])
-def api_bookmark():
-    """Toggle bookmark state for a job. Returns new bookmarked state."""
-    data = request.get_json() or {}
-    job_id = data.get('job_id')
-    if not job_id:
-        return jsonify({"status": "error", "message": "job_id required"}), 400
-    init_db()
-    new_state = toggle_bookmark(int(job_id))
-    return jsonify({"status": "success", "bookmarked": new_state})
-
-
-@app.route('/api/bookmarked-jobs')
-def api_bookmarked_jobs():
-    """Return all bookmarked jobs as JSON for the sidebar panel."""
-    init_db()
-    jobs = get_bookmarked_jobs()
-    return jsonify({"jobs": jobs})
-
-
-
-
 @app.route('/api/lifecycle-stats')
+@login_required
 def api_lifecycle_stats():
     """Return job lifecycle + application outcome stats as JSON."""
     init_db()
     stats = get_lifecycle_stats()
-    stats['new_24h'] = get_new_jobs_count()
     stats['new_24h'] = get_new_jobs_count(hours=24)
     return jsonify(stats)
 
 
 @app.route('/api/check-expired-jobs', methods=['POST'])
+@login_required
 def api_check_expired_jobs():
     """Admin endpoint to manually trigger a stale-job validation batch."""
     limit = int(request.get_json(silent=True, force=True).get('limit', 20) if request.data else 20)
@@ -580,27 +403,8 @@ def api_check_expired_jobs():
     return jsonify({"status": "started", "limit": limit})
 
 
-@app.route('/api/validate-job/<int:job_id>', methods=['GET'])
-def api_validate_job(job_id):
-    """
-    Instantly check whether a specific job is still accepting applications.
-    Returns {"active": true/false}. Marks the job expired in DB if closed.
-    """
-    from jd_scraper import scrape_jd_text
-    job = get_job_by_id(job_id)
-    if not job or not job.get("url"):
-        return jsonify({"active": False, "reason": "not_found"})
-    try:
-        jd_text, is_expired = scrape_jd_text(job["url"], job.get("source", ""))
-        if is_expired or (not jd_text and job.get("source", "").lower() == "linkedin"):
-            mark_job_status(job_id, "expired")
-            return jsonify({"active": False, "reason": "no_longer_accepting"})
-        return jsonify({"active": True})
-    except Exception as e:
-        return jsonify({"active": True, "reason": str(e)})  # fail open — don't block user
-
-
 @app.route('/applied-jobs')
+@login_required
 def applied_jobs():
     """Page showing all jobs marked as applied with daily breakdown."""
     init_db()
@@ -706,9 +510,9 @@ def applied_jobs():
 <style>
   *{{box-sizing:border-box;margin:0;padding:0;}}
   body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f4f6f8;color:#1a1a1a;}}
-  .topbar{{background:#fff;border-bottom:1px solid #e0e0e0;padding:0 28px;height:56px;display:flex;align-items:center;gap:20px;}}
-  .brand{{font-weight:800;font-size:1.1rem;color:#0a66c2;}}
-  .topbar a{{color:#0a66c2;font-size:.88rem;font-weight:600;text-decoration:none;}}
+    .topbar{{background:#fff;border-bottom:1px solid #e0e0e0;padding:0 28px;height:56px;display:flex;align-items:center;gap:20px;}}
+    .brand{{font-weight:800;font-size:1.1rem;color:#0a66c2;text-decoration:none;}}
+    .topbar .back-link{{color:#0a66c2;font-size:.88rem;font-weight:600;text-decoration:none;}}
   .page{{max-width:1140px;margin:28px auto;padding:0 20px;}}
   .page-header{{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px;}}
   .page-title{{font-size:1.45rem;font-weight:800;}}
@@ -738,8 +542,8 @@ def applied_jobs():
 </head>
 <body>
 <div class="topbar">
-  <div class="brand">🤖 AI Job Matcher</div>
-  <a href="/">← Back to Job Search</a>
+    <a class="brand" href="/" title="Go to Home">🤖 AI Job Matcher</a>
+    <a class="back-link" href="/">← Back to Job Search</a>
 </div>
 <div class="page">
   <div class="page-header">
@@ -815,6 +619,7 @@ function showToast(msg) {{
     return html
 
 @app.route('/apply', methods=['POST'])
+@login_required
 def apply_job():
     """Endpoint that records a job application and redirects to the external URL."""
     title = request.form.get('title', '')
@@ -834,6 +639,7 @@ def apply_job():
     return redirect(url_for('index'))
 
 @app.route('/remove-resume', methods=['POST'])
+@login_required
 def remove_resume():
     resume_path = os.path.join(_BASE_DIR, "..", "sample_cv.pdf")
     if os.path.exists(resume_path):
@@ -841,27 +647,20 @@ def remove_resume():
     return redirect(url_for('index'))
 
 @app.route('/ai-match/<int:job_id>', methods=['GET'])
+@login_required
 def ai_match(job_id):
     job = get_job_by_id(job_id)
     if not job or not job.get("url"):
         return jsonify({"status": "error", "message": "Job or URL not found."}), 404
         
     resume_path = os.path.join(_BASE_DIR, "..", "sample_cv.pdf")
-    # Use cached description first; only scrape if missing; ignore is_expired entirely
-    jd_text = (job.get("description") or "").strip()
-    if not jd_text:
-        try:
-            scraped, _ = scrape_jd_text(job.get("url", ""), job.get("source", ""))
-            jd_text = (scraped or "").strip()
-        except Exception:
-            pass
-    if not jd_text:
-        jd_text = (job.get("snippet") or "").strip()
+    jd_text = scrape_jd_text(job.get("url", ""), job.get("source", ""))
     report = generate_ai_match_report(resume_path, job, jd_text)
     return jsonify({"status": "success", "report": report})
 
 
 @app.route('/ats-scorecard/<int:job_id>', methods=['GET'])
+@login_required
 def ats_scorecard(job_id):
     """Return a full structured ATS scorecard as JSON."""
     job = get_job_by_id(job_id)
@@ -869,19 +668,7 @@ def ats_scorecard(job_id):
         return jsonify({"status": "error", "message": "Job not found."}), 404
 
     resume_path = os.path.join(_BASE_DIR, "..", "sample_cv.pdf")
-
-    # ATS = skill matching only. NEVER block on expiry.
-    # Use cached description first; scrape only if missing; ignore is_expired.
-    jd_text = (job.get("description") or "").strip()
-    if not jd_text:
-        try:
-            scraped, _ = scrape_jd_text(job.get("url", ""), job.get("source", ""))
-            jd_text = (scraped or "").strip()
-        except Exception:
-            pass
-    if not jd_text:
-        jd_text = (job.get("snippet") or "").strip()
-
+    jd_text = scrape_jd_text(job.get("url", ""), job.get("source", ""))
     scorecard = generate_ats_scorecard(resume_path, job, jd_text)
     if "error" in scorecard:
         return jsonify({"status": "error", "message": scorecard["error"]}), 400
@@ -889,6 +676,7 @@ def ats_scorecard(job_id):
 
 
 @app.route('/smart-tailor-cv/<int:job_id>', methods=['GET'])
+@login_required
 def smart_tailor_cv(job_id):
     """
     Take the uploaded resume, inject the missing JD skills (+10-20% ATS boost),
@@ -903,17 +691,7 @@ def smart_tailor_cv(job_id):
         return "No resume uploaded. Please upload your CV first.", 400
 
     output_pdf_path = os.path.join(_BASE_DIR, "..", f"smart_cv_{job_id}.pdf")
-
-    # Use cached description first; scrape only if missing; ignore is_expired.
-    jd_text = (job.get("description") or "").strip()
-    if not jd_text:
-        try:
-            scraped, _ = scrape_jd_text(job.get("url", ""), job.get("source", ""))
-            jd_text = (scraped or "").strip()
-        except Exception:
-            pass
-    if not jd_text:
-        jd_text = (job.get("snippet") or "").strip()
+    jd_text = scrape_jd_text(job.get("url", ""), job.get("source", ""))
 
     try:
         result = tailor_cv_smart(base_pdf_path, job, output_pdf_path, jd_text)
@@ -993,6 +771,7 @@ def smart_tailor_cv(job_id):
     return html
 
 @app.route('/generate-cv/<int:job_id>', methods=['GET'])
+@login_required
 def generate_cv(job_id):
     job = get_job_by_id(job_id)
     if not job:
@@ -1009,6 +788,7 @@ def generate_cv(job_id):
 
 
 @app.route('/api/autocomplete', methods=['GET'])
+@login_required
 def autocomplete():
     """Return autocomplete suggestions for designation, skills, and location."""
     import sqlite3
@@ -1016,435 +796,63 @@ def autocomplete():
 
     # ── Static curated lists ─────────────────────────────────────────────────
     DESIGNATIONS = sorted([
-        # ── Software Engineering ──
-        "Software Engineer", "Senior Software Engineer", "Staff Software Engineer",
-        "Principal Software Engineer", "Lead Software Engineer",
-        "Software Developer", "Senior Software Developer",
-        "Full Stack Developer", "Full Stack Engineer",
-        "Backend Developer", "Backend Engineer",
-        "Frontend Developer", "Frontend Engineer",
-        "Junior Software Engineer", "Associate Software Engineer",
-        "Software Architect", "Technical Architect", "Enterprise Architect",
-        "Solutions Architect", "Application Architect",
-        # ── DevOps / SRE / Cloud ──
         "DevOps Engineer", "Senior DevOps Engineer", "Lead DevOps Engineer",
-        "Principal DevOps Engineer", "DevOps Architect",
-        "Site Reliability Engineer", "SRE", "Senior SRE",
-        "Cloud Engineer", "Senior Cloud Engineer", "Cloud Architect",
-        "Platform Engineer", "Senior Platform Engineer", "Staff Platform Engineer",
-        "Infrastructure Engineer", "Senior Infrastructure Engineer",
-        "Build & Release Engineer", "Release Engineer",
-        "Kubernetes Engineer", "Container Engineer",
-        "Cloud Operations Engineer", "CloudOps Engineer",
-        # ── Data / ML / AI ──
-        "Data Engineer", "Senior Data Engineer", "Lead Data Engineer",
-        "Data Scientist", "Senior Data Scientist", "Lead Data Scientist",
-        "ML Engineer", "Machine Learning Engineer", "Senior ML Engineer",
-        "MLOps Engineer", "AI Engineer", "AI/ML Engineer",
-        "Data Analyst", "Senior Data Analyst", "Business Intelligence Analyst",
-        "BI Developer", "BI Engineer", "Data Warehouse Engineer",
-        "Big Data Engineer", "Analytics Engineer",
-        "NLP Engineer", "Computer Vision Engineer",
-        "Deep Learning Engineer", "Research Scientist",
-        "Generative AI Engineer", "LLM Engineer", "AI Researcher",
-        # ── Programming Language Specific ──
-        "Python Developer", "Senior Python Developer",
-        "Java Developer", "Senior Java Developer", "Java Backend Developer",
-        "Node.js Developer", "JavaScript Developer",
-        "TypeScript Developer", ".NET Developer", "C# Developer",
-        "Go Developer", "Golang Developer", "Rust Developer",
-        "PHP Developer", "Ruby Developer", "Ruby on Rails Developer",
-        "Scala Developer", "Kotlin Developer",
-        # ── Frontend / Mobile ──
-        "React Developer", "Senior React Developer",
-        "Angular Developer", "Vue.js Developer",
-        "React Native Developer", "Flutter Developer",
-        "iOS Developer", "Android Developer",
-        "Mobile Developer", "Mobile App Developer",
-        "UI Developer", "UI Engineer",
-        # ── Security ──
-        "Security Engineer", "Senior Security Engineer",
-        "Cybersecurity Engineer", "Cybersecurity Analyst",
-        "Information Security Analyst", "Information Security Engineer",
-        "Application Security Engineer", "AppSec Engineer",
-        "Cloud Security Engineer", "Security Architect",
-        "Penetration Tester", "Ethical Hacker",
-        "SOC Analyst", "SOC Engineer", "Threat Analyst",
-        "Vulnerability Assessment Engineer", "VAPT Engineer",
-        "GRC Analyst", "Compliance Analyst",
-        "Identity & Access Management Engineer", "IAM Engineer",
-        # ── Networking ──
-        "Network Engineer", "Senior Network Engineer",
-        "Network Administrator", "Network Architect",
-        "Network Support Engineer", "NOC Engineer",
-        "Wireless Network Engineer", "SD-WAN Engineer",
-        "Cisco Network Engineer", "Juniper Network Engineer",
-        "Firewall Engineer", "Network Security Engineer",
-        "Telecom Engineer", "VoIP Engineer",
-        # ── Database / DBA ──
-        "Database Administrator", "DBA",
-        "Oracle DBA", "SQL Server DBA", "MySQL DBA",
-        "PostgreSQL DBA", "MongoDB Administrator",
-        "Database Engineer", "Database Developer",
-        # ── QA / Testing ──
-        "QA Engineer", "Senior QA Engineer", "Lead QA Engineer",
-        "Test Engineer", "Senior Test Engineer",
-        "Test Automation Engineer", "Automation Test Engineer",
-        "Manual Tester", "QA Analyst", "QA Tester",
-        "Performance Test Engineer", "Load Test Engineer",
-        "SDET", "Software Development Engineer in Test",
-        "Mobile Test Engineer", "API Test Engineer",
-        "Selenium Engineer", "Playwright Engineer",
-        # ── IT Support / Helpdesk ──
-        "Desktop Support Engineer", "Desktop Support Technician",
-        "System Engineer", "Systems Engineer",
-        "System Support Engineer", "IT Support Engineer", "IT Support Analyst",
-        "Help Desk Engineer", "Help Desk Analyst", "Help Desk Executive",
-        "L1 Support Engineer", "L2 Support Engineer", "L3 Support Engineer",
-        "Technical Support Engineer", "Technical Support Analyst",
-        "Technical Support Executive", "Customer Support Engineer",
-        "IT Administrator", "IT Analyst", "IT Coordinator",
-        "End User Computing Engineer", "EUC Engineer",
-        "Field Support Engineer", "Field Service Engineer",
-        "Service Desk Analyst", "Service Desk Engineer",
-        "Windows Administrator", "Linux Administrator",
-        "Active Directory Administrator", "Sysadmin",
-        "IT Asset Manager", "Patch Management Engineer",
-        # ── ERP / SAP / Oracle ──
-        "SAP Consultant", "SAP ABAP Developer", "SAP Basis Administrator",
-        "SAP Functional Consultant", "SAP FICO Consultant", "SAP SD Consultant",
-        "SAP MM Consultant", "SAP HCM Consultant", "SAP S/4HANA Consultant",
-        "Oracle Consultant", "Oracle EBS Consultant",
-        "Salesforce Developer", "Salesforce Administrator",
-        "Salesforce Consultant", "Salesforce Architect",
-        "ServiceNow Developer", "ServiceNow Administrator",
-        # ── Product / Management ──
-        "Product Manager", "Senior Product Manager", "Principal Product Manager",
-        "Product Owner", "Associate Product Manager",
-        "Scrum Master", "Agile Coach",
-        "Technical Program Manager", "Program Manager", "Project Manager",
-        "Engineering Manager", "VP Engineering", "CTO",
-        "Director of Engineering", "Head of Engineering",
-        "Delivery Manager", "Release Manager",
-        # ── UI/UX ──
-        "UI/UX Designer", "UX Designer", "UI Designer",
-        "Product Designer", "Visual Designer",
-        "UX Researcher", "Interaction Designer",
-        # ── Embedded / Hardware ──
-        "Embedded Systems Engineer", "Embedded Software Engineer",
-        "Firmware Engineer", "Hardware Engineer",
-        "VLSI Engineer", "FPGA Engineer",
-        "IoT Engineer", "IoT Developer",
+        "Site Reliability Engineer", "SRE", "Cloud Engineer", "Cloud Architect",
+        "Platform Engineer", "Infrastructure Engineer", "Software Engineer",
+        "Senior Software Engineer", "Full Stack Developer", "Backend Developer",
+        "Frontend Developer", "Data Engineer", "Data Scientist", "ML Engineer",
+        "MLOps Engineer", "Python Developer", "Java Developer", "Node.js Developer",
+        "React Developer", "Angular Developer", "iOS Developer", "Android Developer",
+        "Mobile Developer", "Kubernetes Engineer", "Solutions Architect",
+        "Security Engineer", "Network Engineer", "Systems Administrator",
+        "Database Administrator", "QA Engineer", "Test Automation Engineer",
+        "Scrum Master", "Product Manager", "Technical Program Manager",
+        "Engineering Manager", "CTO", "VP Engineering",
+        # Linux / Sysadmin roles
+        "Linux Administrator", "Linux Admin", "Senior Linux Administrator",
+        "Linux System Administrator", "Linux Systems Admin",
+        "RHEL Administrator", "RedHat Linux Administrator",
+        "Unix Administrator", "Unix Linux Administrator",
+        "AWS Linux Administrator", "Azure Linux Admin",
+        "Linux Support Engineer", "Linux Server Administrator",
+        "System Administrator", "Senior System Administrator",
+        "IT Administrator", "Infrastructure Administrator",
     ])
 
     SKILLS = sorted([
-        # ── Programming Languages ──
-        "Python", "Java", "JavaScript", "TypeScript", "C", "C++", "C#",
-        "Go", "Golang", "Rust", "Ruby", "PHP", "Swift", "Kotlin",
-        "Scala", "R", "MATLAB", "Perl", "Shell Script", "Bash",
-        "PowerShell", "Groovy", "Dart", "Lua", "Haskell", "Elixir",
-        "VBScript", "Batch Scripting",
-        # ── Frontend ──
-        "React", "React.js", "Angular", "Vue.js", "Next.js", "Nuxt.js",
-        "Svelte", "jQuery", "Bootstrap", "Tailwind CSS", "Material UI",
-        "HTML", "CSS", "SASS", "SCSS", "Webpack", "Vite",
-        "Redux", "MobX", "GraphQL",
-        # ── Backend Frameworks ──
-        "Node.js", "Express", "Express.js", "NestJS",
-        "Django", "Flask", "FastAPI",
-        "Spring Boot", "Spring Framework", "Hibernate",
-        "Laravel", "Symfony",
-        "Ruby on Rails", "ASP.NET", "ASP.NET Core", ".NET Core",
-        "Gin", "Fiber", "Echo",
-        # ── Mobile ──
-        "React Native", "Flutter", "SwiftUI", "UIKit",
-        "Android SDK", "Jetpack Compose", "Xamarin", "Ionic",
-        "Expo", "Xcode", "Android Studio",
-        # ── DevOps / CI-CD ──
-        "Docker", "Kubernetes", "Helm", "Kustomize",
-        "Terraform", "Ansible", "Chef", "Puppet", "SaltStack",
-        "Jenkins", "GitHub Actions", "GitLab CI", "CircleCI",
-        "ArgoCD", "FluxCD", "Spinnaker", "Tekton",
-        "CI/CD", "GitOps",
-        "Vagrant", "Packer",
-        # ── Cloud Platforms ──
-        "AWS", "Amazon Web Services", "GCP", "Google Cloud Platform",
-        "Azure", "Microsoft Azure", "OpenStack", "DigitalOcean",
-        "Alibaba Cloud", "Oracle Cloud", "IBM Cloud",
-        # ── AWS Services ──
-        "EC2", "S3", "RDS", "Lambda", "EKS", "ECS", "ECR",
-        "CloudFormation", "CloudWatch", "VPC",
-        "Route 53", "CloudFront", "SQS", "SNS", "SES",
-        "DynamoDB", "Glue", "EMR", "Athena",
-        "API Gateway", "Elastic Beanstalk", "Fargate", "Step Functions",
-        # ── Azure Services ──
-        "Azure DevOps", "Azure Kubernetes Service", "AKS",
-        "Azure Functions", "Azure Blob Storage",
-        "Azure Monitor", "Azure Pipelines",
-        "Azure Virtual Desktop", "AVD",
-        # ── GCP Services ──
-        "GKE", "Cloud Run", "Pub/Sub",
-        "Cloud Functions", "Firebase",
-        # ── SRE / Observability ──
-        "Prometheus", "Grafana", "Loki", "Jaeger", "Tempo",
-        "Datadog", "New Relic", "Dynatrace", "AppDynamics",
-        "ELK Stack", "Logstash", "Kibana",
-        "Splunk", "Fluentd", "Fluent Bit",
-        "PagerDuty", "Opsgenie", "VictorOps",
-        "OpenTelemetry", "Zipkin",
-        # ── Databases ──
-        "MySQL", "PostgreSQL", "Oracle DB", "Microsoft SQL Server", "SQL Server",
-        "MongoDB", "Redis", "Cassandra",
-        "Neo4j", "CouchDB", "InfluxDB",
-        "MariaDB", "SQLite",
-        "MSSQL", "HBase", "Couchbase",
-        "SQL", "PL/SQL", "T-SQL", "NoSQL",
-        # ── Messaging / Streaming ──
-        "Apache Kafka", "RabbitMQ", "ActiveMQ",
-        "NATS", "Celery", "Redis Pub/Sub", "AWS SQS",
-        # ── Networking ──
-        "TCP/IP", "LDAP", "VPN", "Firewall",
-        "Routing", "Switching", "VLAN", "BGP", "OSPF", "MPLS",
-        "LAN", "WAN", "Wi-Fi", "SD-WAN",
-        "Cisco", "Juniper", "Palo Alto", "Fortinet", "Checkpoint",
-        "F5", "NetScaler", "Citrix ADC",
-        "VoIP", "SIP", "Asterisk",
-        "Nginx", "Apache", "HAProxy", "Istio", "Envoy", "Traefik",
-        # ── OS / Virtualization ──
-        "Linux", "Ubuntu", "CentOS", "RHEL", "Debian",
-        "Windows", "Windows Server", "Windows 10", "Windows 11",
-        "Windows Server 2019", "Windows Server 2022", "macOS",
-        "VMware", "VMware ESXi", "vSphere", "vCenter",
-        "KVM", "Xen", "VirtualBox",
-        "Virtualization", "Containerization",
-        # ── Security ──
-        "Cybersecurity", "Information Security", "Application Security",
-        "Penetration Testing", "Vulnerability Assessment", "VAPT",
-        "OWASP", "Burp Suite", "Metasploit", "Nessus", "Qualys",
-        "CrowdStrike", "Sophos", "Symantec", "McAfee", "Trend Micro",
-        "Antivirus", "Endpoint Security", "EDR",
-        "SIEM", "SOC", "Threat Intelligence",
-        "IAM", "PAM", "Zero Trust", "OAuth", "SAML", "SSO",
-        "SSL/TLS", "PKI", "Cryptography",
-        "DLP", "CASB", "WAF",
-        "ISO 27001", "NIST", "SOC 2", "PCI DSS", "HIPAA", "GDPR",
-        # ── IT Support Tools ──
-        "ServiceNow", "Remedy", "BMC Remedy", "Zendesk", "Freshdesk",
-        "Jira Service Management", "ManageEngine", "SolarWinds",
-        "Ticketing System", "ITSM",
-        "Remote Desktop", "TeamViewer", "AnyDesk", "VNC",
-        "Dameware", "LogMeIn",
-        "Teams", "Outlook",
-        "Google Workspace", "Gmail", "Google Drive",
-        # ── Microsoft / Active Directory ──
-        "Active Directory", "ADFS", "Azure AD", "Azure Active Directory",
-        "Group Policy", "GPO", "DNS", "DHCP",
-        "Intune", "SCCM",
-        "Exchange Server", "Microsoft 365", "Office 365",
-        "Hyper-V", "SharePoint", "OneDrive",
-        # ── Backup / Recovery ──
-        "Veeam", "Symantec Backup Exec", "Commvault", "Acronis",
-        "Zerto", "Azure Backup", "AWS Backup",
-        "Backup & Recovery", "Disaster Recovery", "BCP",
-        # ── Hardware ──
-        "Hardware Troubleshooting", "Desktop Support",
-        "Laptop Repair", "Printer Support", "Scanner Support",
-        "BIOS", "UEFI", "RAM Upgrade", "SSD", "HDD",
-        "Asset Management", "IT Asset Management",
-        # ── Machine Learning / AI ──
-        "Machine Learning", "Deep Learning", "Supervised Learning",
-        "Unsupervised Learning", "Reinforcement Learning",
-        "TensorFlow", "PyTorch", "Keras", "Scikit-learn",
-        "XGBoost", "LightGBM", "CatBoost",
-        "Hugging Face", "Transformers", "BERT", "GPT",
-        "LangChain", "LlamaIndex", "RAG", "Vector Databases",
-        "Pinecone", "Weaviate", "Chroma",
-        "OpenCV", "Computer Vision", "NLP",
-        "Natural Language Processing", "Text Mining",
-        "MLflow", "Kubeflow", "Weights & Biases",
-        "Feature Engineering", "Model Deployment",
-        "Generative AI", "LLM", "Prompt Engineering",
-        # ── Data Engineering ──
-        "Apache Spark", "Spark", "Hadoop", "Hive", "Pig",
-        "Apache Airflow", "Airflow", "Prefect", "Dagster",
-        "dbt", "Flink", "Storm",
-        "Snowflake", "Databricks", "Delta Lake",
-        "Redshift", "BigQuery", "Synapse Analytics",
-        "ETL", "ELT", "Data Pipeline", "Data Warehouse",
-        "Data Lake", "Data Lakehouse",
-        "Pandas", "NumPy", "PySpark",
-        # ── Collaboration / PM Tools ──
-        "Git", "GitHub", "GitLab", "Bitbucket",
-        "Jira", "Confluence", "Trello", "Asana", "Monday.com",
-        "Slack", "Microsoft Teams", "Zoom", "Notion",
-        "Figma", "Miro", "LucidChart",
-        # ── Methodologies / Practices ──
-        "Agile", "Scrum", "Kanban", "SAFe", "Lean",
-        "ITIL", "Incident Management", "Change Management",
-        "Problem Management", "Release Management",
+        "Python", "Java", "Go", "Rust", "JavaScript", "TypeScript", "C++", "C#",
+        "Ruby", "PHP", "Swift", "Kotlin", "Scala", "R",
+        "Docker", "Kubernetes", "Helm", "Terraform", "Ansible", "Chef", "Puppet",
+        "AWS", "GCP", "Azure", "OpenStack", "VMware",
+        "CI/CD", "Jenkins", "GitHub Actions", "GitLab CI", "CircleCI", "ArgoCD",
+        "Prometheus", "Grafana", "Datadog", "New Relic", "ELK Stack", "Splunk",
+        "PagerDuty", "ServiceNow", "OpsGenie",
+        "Linux", "Ubuntu", "CentOS", "Windows Server", "macOS",
+        "Nginx", "Apache", "HAProxy", "Istio", "Envoy",
+        "PostgreSQL", "MySQL", "MongoDB", "Redis", "Elasticsearch", "Cassandra",
+        "Kafka", "RabbitMQ", "Celery",
+        "React", "Angular", "Vue.js", "Next.js", "Django", "Flask", "FastAPI",
+        "Spring Boot", "Node.js", "Express",
+        "Git", "GitHub", "GitLab", "Bitbucket", "Jira", "Confluence",
+        "Machine Learning", "Deep Learning", "TensorFlow", "PyTorch", "Scikit-learn",
+        "Spark", "Hadoop", "Airflow", "dbt",
+        "REST API", "GraphQL", "gRPC", "Microservices", "Serverless",
         "DevOps", "SRE", "Platform Engineering", "FinOps",
-        "Microservices", "Serverless", "Event-Driven Architecture",
-        "Domain-Driven Design", "DDD", "TDD", "BDD",
-        "REST API", "RESTful API", "gRPC", "SOAP", "WebSocket",
-        "API Development", "OpenAPI", "Swagger",
-        # ── API / Integration ──
-        "MuleSoft", "WSO2", "Apache Camel",
-        "IBM MQ", "TIBCO", "Dell Boomi",
-        "Postman", "Insomnia",
-        # ── ERP / CRM / ITSM ──
-        "SAP", "SAP ABAP", "SAP Basis", "SAP FICO",
-        "SAP SD", "SAP MM", "SAP HCM", "SAP S/4HANA",
-        "SAP BW", "SAP HANA", "SAP Fiori",
-        "Oracle EBS", "Oracle Fusion", "PeopleSoft",
-        "Salesforce", "Salesforce CRM", "Salesforce Lightning",
-        "ServiceNow ITSM", "ServiceNow HRSD",
-        "Workday", "Zoho CRM", "HubSpot",
-        # ── Testing / QA ──
-        "Selenium", "Playwright", "Cypress", "TestNG", "JUnit",
-        "Pytest", "Mocha", "Jest", "Chai",
-        "Appium", "Espresso", "XCUITest",
-        "JMeter", "Gatling", "Locust", "k6",
-        "SoapUI", "RestAssured",
-        "TestRail", "Zephyr", "HP ALM", "Quality Center",
-        "Manual Testing", "Automation Testing",
-        "Regression Testing", "Smoke Testing", "UAT",
-        "API Testing", "Performance Testing", "Load Testing",
-        # ── Embedded / IoT ──
-        "Embedded C", "C for Embedded", "RTOS", "FreeRTOS",
-        "Arduino", "Raspberry Pi", "STM32",
-        "MQTT", "Modbus", "CAN Bus",
-        "IoT", "AWS IoT", "Azure IoT Hub",
-        "FPGA", "Verilog", "VHDL",
-        # ── Misc / Soft Skills / Certs ──
-        "AWS Certified", "Azure Certified", "GCP Certified",
-        "CKA", "CKAD", "CISSP", "CEH", "CCNA", "CCNP",
-        "ITIL Foundation", "PMP", "Prince2",
-        "Communication", "Problem Solving", "Analytical Skills",
-        "Team Leadership", "Project Management",
     ])
 
     LOCATIONS = sorted([
-        # ── Karnataka ──
-        "Bangalore / Bengaluru",
-        "Mysuru",
-        "Mangaluru",
-        "Hubli",
-        "Belagavi",
-        # ── Tamil Nadu ──
-        "Chennai",
-        "Coimbatore",
-        "Madurai",
-        "Tiruchirappalli",
-        "Salem",
-        "Tirunelveli",
-        "Vellore",
-        "Erode",
-        # ── Maharashtra ──
-        "Mumbai",
-        "Pune",
-        "Nagpur",
-        "Nashik",
-        "Aurangabad",
-        "Thane",
-        # ── Telangana ──
-        "Hyderabad",
-        "Secunderabad",
-        "Warangal",
-        # ── Andhra Pradesh ──
-        "Visakhapatnam",
-        "Vijayawada",
-        "Guntur",
-        "Tirupati",
-        # ── Delhi NCR ──
-        "New Delhi",
-        "Noida",
-        "Gurgaon",
-        "Faridabad",
-        "Ghaziabad",
-        # ── Uttar Pradesh ──
-        "Lucknow",
-        "Kanpur",
-        "Agra",
-        "Varanasi",
-        # ── West Bengal ──
-        "Kolkata",
-        # ── Gujarat ──
-        "Ahmedabad",
-        "Surat",
-        "Vadodara",
-        "Rajkot",
-        # ── Rajasthan ──
-        "Jaipur",
-        "Jodhpur",
-        "Udaipur",
-        # ── Madhya Pradesh ──
-        "Indore",
-        "Bhopal",
-        # ── Punjab & Haryana ──
-        "Chandigarh",
-        "Ludhiana",
-        "Amritsar",
-        # ── Kerala ──
-        "Kochi",
-        "Thiruvananthapuram",
-        "Kozhikode",
-        "Thrissur",
-        # ── Odisha ──
-        "Bhubaneswar",
-        "Cuttack",
-        # ── Jharkhand & Bihar ──
-        "Ranchi",
-        "Patna",
-        # ── North East ──
-        "Guwahati",
-        # ── Other ──
-        "Remote",
-        "Hybrid",
-        "Pan India",
-        # ── Global ──
-        "New York",
-        "San Francisco",
-        "Seattle",
-        "Austin",
-        "London",
-        "Singapore",
-        "Dubai",
-        "Toronto",
-        "Berlin",
+        "Bangalore", "Bengaluru", "Mumbai", "Pune", "Hyderabad", "Chennai",
+        "Delhi", "Noida", "Gurgaon", "Kolkata", "Ahmedabad", "Jaipur",
+        "Chandigarh", "Kochi", "Coimbatore", "Indore", "Bhubaneswar",
+        "Remote", "Hybrid", "Pan India",
+        # Global
+        "New York", "San Francisco", "Seattle", "Austin", "London",
+        "Singapore", "Dubai", "Toronto", "Berlin",
     ])
 
     # ── Augment with DB data ─────────────────────────────────────────────────
     try:
         conn = sqlite3.connect(DB_PATH)
-        # Pull locations from active jobs ordered by frequency (most jobs = most relevant)
-        db_loc_rows = conn.execute(
-            """SELECT location, COUNT(*) as cnt
-               FROM jobs
-               WHERE status NOT IN ('expired','filled','closed')
-                 AND location IS NOT NULL AND location != '' AND location != 'N/A'
-               GROUP BY location
-               ORDER BY cnt DESC"""
-        ).fetchall()
-
-        # Expand multi-city strings (e.g. "Pune, Bengaluru, Delhi / NCR") into individual cities
-        # Also normalise Bangalore / Bengaluru variants to the combined label
-        _BLORE_VARIANTS = {"bangalore", "bengaluru", "bangalore/bengaluru", "bengaluru/bangalore"}
-        db_loc_freq = {}   # city -> total job count
-        for raw_loc, cnt in db_loc_rows:
-            raw_loc = raw_loc.strip()
-            # Split on comma, clean "Hybrid - " prefix, strip whitespace
-            parts = [p.replace("Hybrid - ", "").replace("Hybrid-", "").strip() for p in raw_loc.split(",")]
-            for part in parts:
-                part = part.strip()
-                if part and len(part) < 60 and len(part) > 2:
-                    # Normalise Bangalore/Bengaluru variants to combined label
-                    if part.lower().replace(" ", "") in _BLORE_VARIANTS or part.lower() in _BLORE_VARIANTS:
-                        part = "Bangalore / Bengaluru"
-                    db_loc_freq[part] = db_loc_freq.get(part, 0) + cnt
-
-        # Sort by frequency descending
-        db_locs_sorted = [loc for loc, _ in sorted(db_loc_freq.items(), key=lambda x: -x[1])]
-
         # Pull unique locations from DB jobs
         db_locs = [r[0].strip() for r in conn.execute(
             "SELECT DISTINCT location FROM jobs WHERE location IS NOT NULL AND location != '' AND location != 'N/A' ORDER BY location"
@@ -1459,27 +867,18 @@ def autocomplete():
                 sk = sk.strip()
                 if 1 < len(sk) < 40:
                     db_skills.add(sk.title())
+        # Pull unique job titles from DB to auto-extend designation suggestions
+        db_titles = [r[0].strip().title() for r in conn.execute(
+            "SELECT DISTINCT title FROM jobs WHERE title IS NOT NULL AND title != '' AND title != 'N/A' ORDER BY title"
+        ).fetchall() if r[0] and 3 < len(r[0]) < 80 and '\n' not in r[0] and not any(ch.isdigit() for ch in r[0])]
         conn.close()
     except Exception:
-        db_locs_sorted, db_skills = [], set()
-
-    # Merge: DB frequency-sorted locations FIRST, then static fallbacks
-    locs_seen = set()
-    merged_locs = []
-    for l in db_locs_sorted:
-        if l.lower() not in locs_seen:
-            merged_locs.append(l)
-            locs_seen.add(l.lower())
-    for l in LOCATIONS:
-        db_locs, db_skills = [], set()
+        db_locs, db_skills, db_titles = [], set(), []
 
     # Merge and deduplicate (case-insensitive)
     locs_seen = {l.lower() for l in LOCATIONS}
     merged_locs = list(LOCATIONS)
     for l in db_locs:
-        # Normalise Bangalore/Bengaluru from DB
-        if l.lower().replace(" ", "") in {"bangalore", "bengaluru", "bangalore/bengaluru"}:
-            l = "Bangalore / Bengaluru"
         if l.lower() not in locs_seen:
             merged_locs.append(l)
             locs_seen.add(l.lower())
@@ -1491,8 +890,15 @@ def autocomplete():
             merged_skills.append(sk)
             skills_seen.add(sk.lower())
 
+    desig_seen = {d.lower() for d in DESIGNATIONS}
+    merged_designations = list(DESIGNATIONS)
+    for t in db_titles:
+        if t.lower() not in desig_seen:
+            merged_designations.append(t)
+            desig_seen.add(t.lower())
+
     return jsonify({
-        "designations": DESIGNATIONS,
+        "designations": sorted(merged_designations),
         "skills": merged_skills,
         "locations": merged_locs,
     })
@@ -1524,5 +930,193 @@ def auto_apply_ui():
         
     return render_template('auto_apply.html', message=message)
 
+
+@app.route('/account-settings', methods=['GET', 'POST'])
+@login_required
+def account_settings():
+    """Account settings page — API keys, credentials, automation preferences, notifications."""
+    if request.method == 'POST':
+        # Handle different settings updates based on the form action
+        action = request.form.get('action', '')
+        
+        if action == 'save_api_key':
+            # Save API key (in production, use secure backend storage, not localStorage)
+            return jsonify({"status": "success", "message": "API key saved"})
+        
+        elif action == 'save_preferences':
+            experience = request.form.get('experience', '')
+            location = request.form.get('location', '')
+            exclude_keywords = request.form.get('exclude_keywords', '')
+            min_salary = request.form.get('min_salary', '')
+            max_salary = request.form.get('max_salary', '')
+            # Store in session or database
+            return jsonify({"status": "success", "message": "Preferences saved"})
+        
+        elif action == 'save_automation':
+            max_applications = request.form.get('max_applications', '15')
+            delay_between = request.form.get('delay_between', '8')
+            application_strategy = request.form.get('application_strategy', 'best-match')
+            use_tailored_cv = request.form.get('use_tailored_cv', 'off') == 'on'
+            return jsonify({"status": "success", "message": "Automation settings saved"})
+        
+        elif action == 'save_notifications':
+            email = request.form.get('email', '')
+            notify_new_jobs = request.form.get('notify_new_jobs', 'off') == 'on'
+            notify_applied = request.form.get('notify_applied', 'off') == 'on'
+            digest_frequency = request.form.get('digest_frequency', 'daily')
+            return jsonify({"status": "success", "message": "Notification settings saved"})
+        
+        elif action == 'clear_cache':
+            # Clear browser cache
+            import shutil
+            profile_path = os.path.join(_BASE_DIR, "..", "playwright_profile")
+            try:
+                shutil.rmtree(os.path.join(profile_path, "Default", "Cache"), ignore_errors=True)
+                return jsonify({"status": "success", "message": "Cache cleared successfully"})
+            except Exception as e:
+                return jsonify({"status": "error", "message": f"Failed to clear cache: {e}"}), 400
+    
+    # GET: Render the settings page
+    return render_template('account_settings.html')
+
+
+@app.route('/billing', methods=['GET'])
+@login_required
+def billing_page():
+    """Simple billing/usage page for current user."""
+    _init_billing_tables()
+    username = session.get("username", "guest")
+    state = _get_user_limit_state(username, action="job_search")
+    return render_template(
+        'billing.html',
+        username=username,
+        usage_plan=state["plan"],
+        usage_daily_limit=state["daily_limit"],
+        usage_daily_count=state["daily_usage"],
+        usage_remaining=state["remaining"],
+        usage_blocked=state["blocked"],
+        paid_until=state["paid_until"],
+        payment_link_url=PAYMENT_LINK_URL,
+        payment_success_token=PAYMENT_SUCCESS_TOKEN,
+    )
+
+
+@app.route('/api/usage-status', methods=['GET'])
+@login_required
+def api_usage_status():
+    """Return current user's daily usage stats (for UI polling if needed)."""
+    _init_billing_tables()
+    username = session.get("username", "guest")
+    state = _get_user_limit_state(username, action="job_search")
+    return jsonify(state)
+
+
+@app.route('/payment/success', methods=['GET'])
+def payment_success():
+    """
+    Minimal callback endpoint to activate paid plan after successful payment.
+    For production, verify provider webhook signature before activating.
+    """
+    if PAYMENT_SUCCESS_TOKEN:
+        token = request.args.get('token', '').strip()
+        if token != PAYMENT_SUCCESS_TOKEN:
+            return jsonify({"status": "error", "message": "Invalid payment callback token"}), 403
+
+    username = request.args.get('user', '').strip() or session.get('username', '').strip()
+    if not username:
+        return redirect(url_for('login'))
+
+    _init_billing_tables()
+    paid_until = (datetime.utcnow().date() + timedelta(days=DEFAULT_SUBSCRIPTION_DAYS)).isoformat()
+    now = datetime.utcnow().isoformat()
+    conn = sqlite3.connect(_billing_db_path())
+    c = conn.cursor()
+    c.execute(
+        """
+        INSERT INTO user_subscriptions (username, plan, paid_until, updated_at)
+        VALUES (?, 'paid', ?, ?)
+        ON CONFLICT(username)
+        DO UPDATE SET plan='paid', paid_until=excluded.paid_until, updated_at=excluded.updated_at
+        """,
+        (username, paid_until, now),
+    )
+    conn.commit()
+    conn.close()
+    return redirect(url_for('billing_page'))
+
+
+# ── Naukri account status & setup ─────────────────────────────────────────────
+
+def _check_naukri_cookie_login():
+    """
+    Read the Chromium persistent-profile Cookies SQLite DB and look for a
+    Naukri session cookie.  Returns True if a valid session is found.
+    """
+    import sqlite3 as _sql
+    cookie_db = os.path.join(_BASE_DIR, "..", "playwright_profile", "Default", "Cookies")
+    if not os.path.exists(cookie_db):
+        return False
+    try:
+        # Chromium locks the DB while browser is open; copy first to avoid SQLITE_BUSY
+        import shutil, tempfile
+        tmp = tempfile.mktemp(suffix=".db")
+        shutil.copy2(cookie_db, tmp)
+        conn = _sql.connect(tmp)
+        cur = conn.cursor()
+        # Naukri sets a cookie called 'nauk_ses' or 'PHPSESSID' on naukri.com
+        cur.execute(
+            "SELECT name FROM cookies "
+            "WHERE host_key LIKE '%naukri.com%' "
+            "  AND name NOT IN ('_ga','_gid','_gat','OptanonConsent') "
+            "LIMIT 1"
+        )
+        row = cur.fetchone()
+        conn.close()
+        os.unlink(tmp)
+        return row is not None
+    except Exception as e:
+        print(f"[naukri-status] Cookie check error: {e}")
+        return False
+
+
+@app.route('/api/naukri-status', methods=['GET'])
+@login_required
+def api_naukri_status():
+    """Return whether the Naukri session cookie exists in the playwright profile."""
+    connected = _check_naukri_cookie_login()
+    return jsonify({"connected": connected})
+
+
+@app.route('/api/naukri-open-login', methods=['POST'])
+@login_required
+def api_naukri_open_login():
+    """
+    Reuse the already open Google Chrome tab (active tab in front window) and
+    navigate it to Naukri login. This avoids opening any new window/tab.
+    """
+    try:
+        import subprocess
+        script = (
+            'tell application "Google Chrome"\n'
+            '  if (count of windows) = 0 then\n'
+            '    make new window\n'
+            '  end if\n'
+            '  set URL of active tab of front window to "https://www.naukri.com/nlogin/login"\n'
+            '  activate\n'
+            'end tell'
+        )
+        subprocess.run(["osascript", "-e", script], check=True)
+        return jsonify(
+            {
+                "status": "launched",
+                "message": "Naukri login opened in the active Chrome tab.",
+            }
+        )
+    except Exception as e:
+        print(f"[naukri-setup] Browser error: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 if __name__ == '__main__':
     app.run(debug=True)
+

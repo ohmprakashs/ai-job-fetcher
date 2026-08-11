@@ -1,416 +1,864 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Account Settings – AI Job Matcher</title>
-    <script>(function(){ var t=localStorage.getItem("theme"); if(t) document.documentElement.setAttribute("data-theme",t); })();</script>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Inter', system-ui, sans-serif; background: #f3f4f6; color: #111827; min-height: 100vh; }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Account Settings — AI Job Matcher</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { height: 100%; overflow: auto; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #f3f2ee;
+            color: #1a1a1a;
+            font-size: 14px;
+        }
+        a { text-decoration: none; color: inherit; }
 
-    /* ── Navbar ── */
-    .navbar {
-      background: #fff;
-      border-bottom: 1px solid #e5e7eb;
-      padding: 0 24px;
-      height: 56px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      position: sticky;
-      top: 0;
-      z-index: 100;
-    }
-    .navbar-brand { font-size: 1rem; font-weight: 700; color: #1d4ed8; text-decoration: none; display: flex; align-items: center; gap: 8px; }
-    .navbar-brand span { font-size: 1.4rem; }
-    .navbar-right { display: flex; align-items: center; gap: 12px; }
-    .navbar-right a { font-size: .82rem; color: #6b7280; text-decoration: none; font-weight: 500; }
-    .navbar-right a:hover { color: #1d4ed8; }
+        /* NAVBAR */
+        .navbar {
+            background: #fff;
+            border-bottom: 1px solid #e0e0e0;
+            padding: 0 24px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .navbar-inner {
+            max-width: 1280px;
+            margin: 0 auto;
+            height: 54px;
+            display: flex;
+            align-items: center;
+            gap: 24px;
+        }
+        .brand {
+            font-size: 1.35rem;
+            font-weight: 700;
+            color: #0a66c2;
+            letter-spacing: -.02em;
+            flex-shrink: 0;
+        }
+        .brand span { color: #f5a623; }
+        .nav-links { margin-left: auto; display: flex; gap: 16px; align-items: center; }
+        .nav-links a {
+            color: #0a66c2;
+            font-weight: 600;
+            font-size: .88rem;
+            padding: 4px 12px;
+            border-radius: 20px;
+            transition: all .2s;
+        }
+        .nav-links a:hover { background: #e0f2fe; }
+        .nav-links a.active { background: #0a66c2; color: #fff; }
 
-    /* ── Page layout ── */
-    .page-wrap { max-width: 680px; margin: 40px auto; padding: 0 16px 60px; }
-    h1 { font-size: 1.45rem; font-weight: 700; color: #111827; margin-bottom: 6px; }
-    .subtitle { font-size: .88rem; color: #6b7280; margin-bottom: 28px; }
+        /* MAIN CONTAINER */
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 40px 24px;
+        }
 
-    /* ── Card ── */
-    .card {
-      background: #fff;
-      border-radius: 14px;
-      border: 1px solid #e5e7eb;
-      padding: 28px 32px;
-      margin-bottom: 20px;
-      box-shadow: 0 1px 4px rgba(0,0,0,.06);
-    }
-    .card-title {
-      font-size: 1rem;
-      font-weight: 700;
-      color: #1e40af;
-      margin-bottom: 20px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      border-bottom: 1px solid #e5e7eb;
-      padding-bottom: 12px;
-    }
+        /* HEADER */
+        .page-header {
+            margin-bottom: 32px;
+        }
+        .page-header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+            color: #0a66c2;
+        }
+        .page-header p {
+            color: #666;
+            font-size: .95rem;
+        }
 
-    /* ── Avatar ── */
-    .avatar-row { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
-    .avatar {
-      width: 68px; height: 68px; border-radius: 50%;
-      background: linear-gradient(135deg,#3b82f6,#6366f1);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 1.6rem; font-weight: 700; color: #fff;
-      flex-shrink: 0; border: 3px solid #e5e7eb;
-      overflow: hidden;
-    }
-    .avatar img { width: 100%; height: 100%; object-fit: cover; }
-    .avatar-info { flex: 1; }
-    .avatar-info .user-name { font-size: 1.05rem; font-weight: 700; color: #111827; }
-    .avatar-info .user-email { font-size: .83rem; color: #6b7280; margin-top: 2px; }
-    .badge-sso {
-      display: inline-flex; align-items: center; gap: 4px;
-      background: #eff6ff; border: 1px solid #bfdbfe;
-      color: #1d4ed8; font-size: .72rem; font-weight: 600;
-      border-radius: 20px; padding: 2px 9px; margin-top: 6px;
-    }
+        /* TABS */
+        .tabs-nav {
+            display: flex;
+            gap: 0;
+            border-bottom: 2px solid #e0e0e0;
+            margin-bottom: 32px;
+            overflow-x: auto;
+        }
+        .tab-link {
+            padding: 14px 20px;
+            border: none;
+            background: none;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: .95rem;
+            font-weight: 600;
+            color: #666;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+            transition: all .2s;
+            white-space: nowrap;
+        }
+        .tab-link:hover { color: #0a66c2; }
+        .tab-link.active {
+            color: #0a66c2;
+            border-bottom-color: #0a66c2;
+        }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
 
-    /* ── Form ── */
-    .form-group { margin-bottom: 18px; }
-    label { display: block; font-size: .82rem; font-weight: 600; color: #374151; margin-bottom: 6px; }
-    .optional { font-weight: 400; color: #9ca3af; font-size: .75rem; margin-left: 4px; }
-    input[type=text], input[type=email], input[type=tel], input[type=password] {
-      width: 100%; padding: 10px 14px;
-      border: 1.5px solid #d1d5db; border-radius: 9px;
-      font-size: .92rem; color: #111827; background: #fff;
-      transition: border-color .2s;
-      outline: none;
-    }
-    input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,.12); }
-    input:disabled { background: #f9fafb; color: #9ca3af; cursor: not-allowed; }
+        /* SETTINGS SECTION */
+        .settings-section {
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+        .settings-section h3 {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #1a1a1a;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .settings-section p {
+            color: #666;
+            font-size: .9rem;
+            margin-bottom: 20px;
+            line-height: 1.5;
+        }
 
-    /* Password strength */
-    .pw-bar-wrap { height: 5px; border-radius: 3px; background: #e5e7eb; margin-top: 6px; overflow: hidden; }
-    .pw-bar { height: 100%; border-radius: 3px; transition: width .3s, background .3s; width: 0; }
-    .pw-hint { font-size: .74rem; color: #9ca3af; margin-top: 4px; }
+        /* FORM ELEMENTS */
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group:last-child { margin-bottom: 0; }
+        .form-label {
+            display: block;
+            font-weight: 600;
+            color: #1a1a1a;
+            margin-bottom: 6px;
+            font-size: .9rem;
+        }
+        .form-hint {
+            color: #777;
+            font-size: .8rem;
+            margin-top: 4px;
+        }
+        .form-input, .form-select, .form-textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: .95rem;
+            color: #1a1a1a;
+            transition: border .2s;
+        }
+        .form-input:focus, .form-select:focus, .form-textarea:focus {
+            outline: none;
+            border-color: #0a66c2;
+            box-shadow: 0 0 0 3px rgba(10,102,194,.1);
+        }
+        .form-textarea {
+            resize: vertical;
+            min-height: 100px;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: .85rem;
+        }
 
-    /* ── Buttons ── */
-    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 20px; border-radius: 9px; font-size: .9rem; font-weight: 600; cursor: pointer; border: none; transition: background .2s, transform .1s; }
-    .btn:active { transform: scale(.97); }
-    .btn-primary { background: linear-gradient(135deg,#2563eb,#4f46e5); color: #fff; }
-    .btn-primary:hover { background: linear-gradient(135deg,#1d4ed8,#4338ca); }
-    .btn-danger { background: #fff; color: #dc2626; border: 1.5px solid #fca5a5; }
-    .btn-danger:hover { background: #fef2f2; }
-    .btn-sm { padding: 8px 16px; font-size: .82rem; }
+        /* PASSWORD INPUT */
+        .password-group {
+            position: relative;
+        }
+        .password-toggle {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            cursor: pointer;
+            color: #666;
+            font-size: .9rem;
+            user-select: none;
+        }
+        .password-group input { padding-right: 40px; }
 
-    /* ── Alerts ── */
-    .alert { padding: 12px 16px; border-radius: 9px; font-size: .88rem; font-weight: 500; margin-bottom: 18px; }
-    .alert-error   { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; }
-    .alert-success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #16a34a; }
+        /* CHECKBOX & TOGGLE */
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 14px;
+        }
+        .checkbox-group input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+        .checkbox-group label {
+            cursor: pointer;
+            user-select: none;
+        }
 
-    /* ── Divider ── */
-    .divider { border: none; border-top: 1px solid #e5e7eb; margin: 20px 0; }
+        /* BUTTON GROUP */
+        .button-group {
+            display: flex;
+            gap: 12px;
+            margin-top: 24px;
+            flex-wrap: wrap;
+        }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: .95rem;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            transition: all .2s;
+            white-space: nowrap;
+        }
+        .btn-primary {
+            background: #0a66c2;
+            color: #fff;
+        }
+        .btn-primary:hover { background: #085396; }
+        .btn-secondary {
+            background: #f3f4f6;
+            color: #1a1a1a;
+            border: 1px solid #d1d5db;
+        }
+        .btn-secondary:hover { background: #e5e7eb; }
+        .btn-danger {
+            background: #fecaca;
+            color: #991b1b;
+        }
+        .btn-danger:hover { background: #fca5a5; }
+        .btn:disabled { opacity: .5; cursor: not-allowed; }
 
-    /* ── Danger zone ── */
-    .danger-section { background: #fff5f5; border: 1px solid #fecaca; border-radius: 12px; padding: 20px 24px; }
-    .danger-section h3 { color: #dc2626; font-size: .95rem; margin-bottom: 6px; }
-    .danger-section p { font-size: .82rem; color: #6b7280; margin-bottom: 14px; }
+        /* STATUS MESSAGE */
+        .status-message {
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin-bottom: 16px;
+            font-size: .9rem;
+            display: none;
+        }
+        .status-message.success {
+            background: #dcfce7;
+            color: #166534;
+            border: 1px solid #bbf7d0;
+            display: block;
+        }
+        .status-message.error {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+            display: block;
+        }
 
-    /* ── Responsive ── */
-    @media (max-width: 600px) {
-      .card { padding: 20px 16px; }
-      .page-wrap { margin: 20px auto; }
-      h1 { font-size: 1.2rem; }
-    }
-  
-    /* Dark mode */
-    [data-theme="dark"] body { background: #0f1117 !important; color: #e2e8f0 !important; }
-    [data-theme="dark"] .card, [data-theme="dark"] .container { background: #1e2130 !important; border-color: #2e3548 !important; }
-    [data-theme="dark"] input { background: #252a3a !important; color: #e2e8f0 !important; border-color: #3a4258 !important; }
-    [data-theme="dark"] label { color: #94a3b8 !important; }
-    [data-theme="dark"] .navbar { background: #151923 !important; border-color: #2e3548 !important; }
-    [data-theme="dark"] .pw-hint { color: #64748b !important; }
-    [data-theme="dark"] h1, [data-theme="dark"] h2 { color: #e2e8f0 !important; }
-</style>
+        /* CARD LAYOUT FOR CREDENTIALS */
+        .credential-card {
+            background: #f8faff;
+            border: 1px solid #c9dff5;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        .credential-card .info {
+            flex: 1;
+        }
+        .credential-card .label {
+            font-weight: 600;
+            color: #1a1a1a;
+            margin-bottom: 4px;
+        }
+        .credential-card .status {
+            font-size: .8rem;
+            color: #666;
+        }
+        .credential-card.connected .status {
+            color: #16a34a;
+            font-weight: 600;
+        }
+        .credential-card .actions {
+            display: flex;
+            gap: 8px;
+        }
+        .credential-card .btn {
+            padding: 7px 14px;
+            font-size: .8rem;
+        }
+
+        /* SECTION DIVIDER */
+        .divider {
+            height: 1px;
+            background: #e0e0e0;
+            margin: 24px 0;
+        }
+
+        /* TWO COLUMN LAYOUT */
+        .two-col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        @media (max-width: 600px) {
+            .two-col { grid-template-columns: 1fr; }
+        }
+
+        /* ALERT BOX */
+        .alert {
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin-bottom: 16px;
+            border-left: 4px solid;
+            background: #f0fdf4;
+            border-color: #16a34a;
+            color: #166534;
+        }
+        .alert.warning {
+            background: #fffbeb;
+            border-color: #ea580c;
+            color: #92400e;
+        }
+        .alert.error {
+            background: #fef2f2;
+            border-color: #dc2626;
+            color: #991b1b;
+        }
+    </style>
 </head>
 <body>
 
-<!-- Navbar -->
+<!-- NAVBAR -->
 <nav class="navbar">
-  <a class="navbar-brand" href="/"><span>🤖</span> AI Job Matcher</a>
-  <div class="navbar-right">
-    <a href="/">← Back to Jobs</a>
-    <a href="/logout" style="color:#dc2626;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:4px 12px;">Sign out</a>
-  </div>
+    <div class="navbar-inner">
+        <a class="brand" href="/" title="Go to Home" style="text-decoration:none;">🤖 AI Job<span> Matcher</span></a>
+        <div class="nav-links">
+            <a href="/">🔍 Search Jobs</a>
+            <a href="/applied-jobs">✅ Applied</a>
+            <a href="/auto-apply">🤖 Auto-Apply</a>
+            <a href="/account-settings" class="active">⚙️ Settings</a>
+            <a href="/logout" style="color:#dc2626;background:#fef2f2;border:1px solid #fca5a5;"
+               onclick="return confirm('Sign out?')">🚪 Logout</a>
+        </div>
+    </div>
 </nav>
 
-<div class="page-wrap">
-  <h1>⚙️ Account Settings</h1>
-  <p class="subtitle">Manage your profile information and security settings.</p>
-
-  <!-- Global alerts -->
-  {% if error %}
-  <div class="alert alert-error">⚠️ {{ error }}</div>
-  {% endif %}
-  {% if success %}
-  <div class="alert alert-success">✅ {{ success }}</div>
-  {% endif %}
-
-  <!-- ── Profile Card ── -->
-  <div class="card">
-    <div class="card-title">👤 Profile Information</div>
-
-    <!-- Avatar + identity summary -->
-    <div class="avatar-row">
-      <div class="avatar">
-        {% if user.picture %}
-          <img src="{{ user.picture }}" alt="{{ user.name }}" onerror="this.parentNode.innerHTML='{{ (user.name or user.email)[0]|upper }}'">
-        {% else %}
-          {{ (user.name or user.email or '?')[0]|upper }}
-        {% endif %}
-      </div>
-      <div class="avatar-info">
-        <div class="user-name">{{ user.name or '(No name set)' }}</div>
-        <div class="user-email">{{ user.email }}</div>
-        {% if user.auth_type == 'google' %}
-        <div class="badge-sso">🔵 Google Account</div>
-        {% else %}
-        <div class="badge-sso" style="background:#f0fdf4;border-color:#86efac;color:#16a34a;">📧 Email Account</div>
-        {% endif %}
-        {% if user.linkedin_url %}
-        <div class="badge-sso" style="background:#e8f0fe;border-color:#93c5fd;color:#0a66c2;margin-top:4px;">
-          <a href="{{ user.linkedin_url }}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;">
-            🔗 LinkedIn Connected ↗
-          </a>
-        </div>
-        {% endif %}
-        {% if user.naukri_url %}
-        <div class="badge-sso" style="background:#fff3ee;border-color:#fdba74;color:#c2410c;margin-top:4px;">
-          <a href="{{ user.naukri_url }}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;">
-            🟠 Naukri Connected ↗
-          </a>
-        </div>
-        {% endif %}
-      </div>
+<!-- MAIN CONTENT -->
+<div class="container">
+    <div class="page-header">
+        <h1>Account Settings</h1>
+        <p>Manage your credentials, preferences, and bot configurations</p>
     </div>
 
-    <form method="POST" action="/account-settings">
-      <input type="hidden" name="action" value="profile">
-
-      <div class="form-group">
-        <label for="name">Full Name</label>
-        <input type="text" id="name" name="name" value="{{ user.name or '' }}"
-               placeholder="Your full name" required>
-      </div>
-
-      <div class="form-group">
-        <label for="email">Email Address</label>
-        {% if user.auth_type == 'google' %}
-        <input type="email" id="email" value="{{ user.email }}" disabled
-               title="Managed by Google — cannot be changed here">
-        <div class="pw-hint">🔵 Managed by Google. Change email via your Google account.</div>
-        {% else %}
-        <input type="email" id="email" name="email" value="{{ user.email }}"
-               placeholder="your@email.com" required autocomplete="email">
-        <div class="pw-hint">Changing your email will require you to log in with the new address.</div>
-        {% endif %}
-      </div>
-
-      <div class="form-group">
-        <label for="phone">Phone Number <span class="optional">(optional)</span></label>
-        <input type="tel" id="phone" name="phone" value="{{ user.phone or '' }}"
-               placeholder="+91 98765 43210">
-      </div>
-
-      <div class="form-group">
-        <label for="linkedin_url">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="#0a66c2" style="vertical-align:middle;margin-right:4px;"><path d="M20.45 20.45h-3.554v-5.569c0-1.328-.025-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.049c.476-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.284zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
-          LinkedIn Profile <span class="optional">(optional)</span>
-        </label>
-        <div style="position:relative;">
-          <input type="url" id="linkedin_url" name="linkedin_url"
-                 value="{{ user.linkedin_url or '' }}"
-                 placeholder="https://linkedin.com/in/your-profile"
-                 style="padding-left: 40px;">
-          <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:.85rem;color:#0a66c2;pointer-events:none;">🔗</span>
-        </div>
-        {% if user.linkedin_url %}
-        <div class="pw-hint">
-          <a href="{{ user.linkedin_url }}" target="_blank" rel="noopener"
-             style="color:#0a66c2;text-decoration:none;font-weight:500;">
-            🔵 View your LinkedIn profile ↗
-          </a>
-        </div>
-        {% else %}
-        <div class="pw-hint">Add your LinkedIn URL to enhance job matching.</div>
-        {% endif %}
-      </div>
-
-      <div class="form-group">
-        <label for="naukri_url">
-          <svg width="15" height="15" viewBox="0 0 32 32" style="vertical-align:middle;margin-right:4px;"><rect width="32" height="32" rx="6" fill="#ff7555"/><text x="4" y="22" font-size="14" font-weight="bold" fill="#fff">N</text></svg>
-          Naukri Profile <span class="optional">(optional)</span>
-        </label>
-        <div style="position:relative;">
-          <input type="url" id="naukri_url" name="naukri_url"
-                 value="{{ user.naukri_url or '' }}"
-                 placeholder="https://naukri.com/mnjuser/profile"
-                 style="padding-left: 40px;">
-          <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:.85rem;color:#ff7555;pointer-events:none;">🔗</span>
-        </div>
-        {% if user.naukri_url %}
-        <div class="pw-hint">
-          <a href="{{ user.naukri_url }}" target="_blank" rel="noopener"
-             style="color:#ff7555;text-decoration:none;font-weight:500;">
-            🟠 View your Naukri profile ↗
-          </a>
-        </div>
-        {% else %}
-        <div class="pw-hint">Add your Naukri profile URL for better job matching.</div>
-        {% endif %}
-      </div>
-
-      <button type="submit" class="btn btn-primary">💾 Save Profile</button>
-    </form>
-  </div>
-
-  <!-- ── Social Credentials Card ── -->
-  <div class="card">
-    <div class="card-title">🔑 Job Platform Credentials
-      <span style="font-size:.73rem;font-weight:400;color:#9ca3af;margin-left:6px;">Used for auto-login when fetching jobs</span>
+    <!-- TABS -->
+    <div class="tabs-nav">
+        <button class="tab-link active" onclick="switchTab('credentials', this)">🔐 Credentials</button>
+        <button class="tab-link" onclick="switchTab('preferences', this)">⚙️ Preferences</button>
+        <button class="tab-link" onclick="switchTab('automation', this)">🤖 Automation</button>
+        <button class="tab-link" onclick="switchTab('notifications', this)">🔔 Notifications</button>
+        <button class="tab-link" onclick="switchTab('billing', this)">💳 Billing</button>
     </div>
-    <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:9px;padding:11px 14px;margin-bottom:18px;font-size:.82rem;color:#92400e;">
-      🔐 Credentials are stored securely and used only to log into these platforms while fetching jobs. They are never shared.
+
+    <!-- TAB: CREDENTIALS -->
+    <div id="credentials" class="tab-content active">
+        <div class="settings-section">
+            <h3>🔐 API Keys & Secrets</h3>
+            <p>Manage your API keys for AI matching and other integrations.</p>
+            
+            <div id="api-status" class="status-message"></div>
+
+            <!-- Anthropic API Key -->
+            <div class="form-group">
+                <label class="form-label">Anthropic API Key</label>
+                <p style="color: #666; font-size: .85rem; margin-bottom: 10px;">Used for AI-powered job matching and form filling. Get your key at <a href="https://console.anthropic.com" target="_blank" style="color: #0a66c2;">console.anthropic.com</a></p>
+                <div class="password-group">
+                    <input type="password" id="anthropic-key" class="form-input" placeholder="sk-ant-..." value="">
+                    <span class="password-toggle" onclick="togglePasswordVisibility('anthropic-key')">👁</span>
+                </div>
+                <div class="form-hint">⚠️ Never share your API key. It will only be stored locally.</div>
+            </div>
+
+            <div class="button-group">
+                <button class="btn btn-primary" onclick="saveApiKey('anthropic')">💾 Save API Key</button>
+                <button class="btn btn-secondary" onclick="testApiKey()">🧪 Test Connection</button>
+            </div>
+        </div>
+
+        <div class="settings-section">
+            <h3>🔗 LinkedIn & Naukri Accounts</h3>
+            <p>Configure your login credentials for automated job applications.</p>
+
+            <div class="credential-card connected">
+                <div class="info">
+                    <div class="label">LinkedIn Account</div>
+                    <div class="status">✅ Session Active</div>
+                </div>
+                <div class="actions">
+                    <button class="btn btn-secondary" onclick="openLinkedInProfile()">View Profile</button>
+                    <button class="btn btn-danger">Logout</button>
+                </div>
+            </div>
+
+            <div class="credential-card" id="naukri-card">
+                <div class="info">
+                    <div class="label">Naukri Account</div>
+                    <div class="status" id="naukri-status-text">⏳ Checking…</div>
+                </div>
+                <div class="actions">
+                    <button class="btn btn-secondary" id="naukri-check-btn" onclick="checkNaukriStatus()">🔄 Refresh</button>
+                    <button class="btn btn-primary" id="naukri-setup-btn" onclick="openNaukriLogin()">🔑 Setup Login</button>
+                </div>
+            </div>
+
+            <div class="alert">
+                ℹ️ Your credentials are stored securely in the browser profile. The app uses persistent Chrome sessions to avoid re-login and CAPTCHA prompts.
+            </div>
+        </div>
     </div>
-    <form method="POST" action="/account-settings">
-      <input type="hidden" name="action" value="social">
 
-      <p style="font-size:.88rem;font-weight:700;color:#0a66c2;margin-bottom:12px;">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="#0a66c2" style="vertical-align:middle;margin-right:5px;"><path d="M20.45 20.45h-3.554v-5.569c0-1.328-.025-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.049c.476-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.284zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
-        LinkedIn Account
-        {% if user.linkedin_email %}<span style="color:#16a34a;font-size:.75rem;font-weight:600;margin-left:6px;">✅ Saved</span>{% endif %}
-      </p>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px;">
-        <div class="form-group" style="margin:0;">
-          <label for="linkedin_email">Email</label>
-          <input type="email" id="linkedin_email" name="linkedin_email"
-                 value="{{ user.linkedin_email or '' }}"
-                 placeholder="your@linkedin.com" autocomplete="off">
+    <!-- TAB: PREFERENCES -->
+    <div id="preferences" class="tab-content">
+        <div class="settings-section">
+            <h3>🎯 Search Preferences</h3>
+            <p>Set your default job search criteria.</p>
+
+            <div class="two-col">
+                <div class="form-group">
+                    <label class="form-label">Default Experience Level (years)</label>
+                    <input type="number" class="form-input" min="0" step="1" value="0" placeholder="e.g., 3">
+                    <div class="form-hint">Automatically filter jobs requiring this minimum experience</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Default Location</label>
+                    <input type="text" class="form-input" placeholder="e.g., Bangalore, Mumbai" value="">
+                    <div class="form-hint">Comma-separated list of preferred cities</div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Exclude Keywords</label>
+                <input type="text" class="form-input" placeholder="e.g., freelance, contract, part-time" value="">
+                <div class="form-hint">Filter out jobs matching these keywords</div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Preferred Salary Range (annual)</label>
+                <div class="two-col">
+                    <input type="number" class="form-input" placeholder="Min (e.g., 500000)" value="">
+                    <input type="number" class="form-input" placeholder="Max (e.g., 2000000)" value="">
+                </div>
+                <div class="form-hint">Jobs within this range will be prioritized</div>
+            </div>
+
+            <div class="button-group">
+                <button class="btn btn-primary">💾 Save Preferences</button>
+            </div>
         </div>
-        <div class="form-group" style="margin:0;">
-          <label for="linkedin_password">Password
-            {% if user.linkedin_email %}<span style="font-size:.72rem;color:#9ca3af;">(leave blank to keep)</span>{% endif %}
-          </label>
-          <input type="password" id="linkedin_password" name="linkedin_password"
-                 placeholder="{% if user.linkedin_email %}••••••••{% else %}LinkedIn password{% endif %}"
-                 autocomplete="new-password">
+
+        <div class="settings-section">
+            <h3>📋 Match Scoring</h3>
+            <p>Customize how job matches are calculated.</p>
+
+            <div class="checkbox-group">
+                <input type="checkbox" id="strict-match" checked>
+                <label for="strict-match">Strict skill matching (only exact matches count)</label>
+            </div>
+
+            <div class="checkbox-group">
+                <input type="checkbox" id="location-priority">
+                <label for="location-priority">Boost score for jobs in preferred locations</label>
+            </div>
+
+            <div class="checkbox-group">
+                <input type="checkbox" id="recent-priority" checked>
+                <label for="recent-priority">Prioritize recently posted jobs</label>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Minimum Match Score for Apply (%)</label>
+                <input type="number" class="form-input" min="0" max="100" step="5" value="60" placeholder="60">
+                <div class="form-hint">Auto-apply will only target jobs with scores at or above this threshold</div>
+            </div>
+
+            <div class="button-group">
+                <button class="btn btn-primary">💾 Save Scoring Settings</button>
+            </div>
         </div>
-      </div>
+    </div>
 
-      <hr class="divider">
+    <!-- TAB: AUTOMATION -->
+    <div id="automation" class="tab-content">
+        <div class="settings-section">
+            <h3>🤖 Auto-Apply Bot Configuration</h3>
+            <p>Control how the bot applies to jobs automatically.</p>
 
-      <p style="font-size:.88rem;font-weight:700;color:#ff7555;margin-bottom:12px;">
-        <svg width="14" height="14" viewBox="0 0 32 32" style="vertical-align:middle;margin-right:5px;"><rect width="32" height="32" rx="4" fill="#ff7555"/><text x="4" y="22" font-size="14" font-weight="bold" fill="#fff">N</text></svg>
-        Naukri Account
-        {% if user.naukri_email %}<span style="color:#16a34a;font-size:.75rem;font-weight:600;margin-left:6px;">✅ Saved</span>{% endif %}
-      </p>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;">
-        <div class="form-group" style="margin:0;">
-          <label for="naukri_email">Email / Mobile</label>
-          <input type="text" id="naukri_email" name="naukri_email"
-                 value="{{ user.naukri_email or '' }}"
-                 placeholder="Naukri login email" autocomplete="off">
+            <div class="checkbox-group">
+                <input type="checkbox" id="enable-auto-apply" checked>
+                <label for="enable-auto-apply">Enable Auto-Apply Bot</label>
+            </div>
+
+            <div class="checkbox-group">
+                <input type="checkbox" id="fill-forms">
+                <label for="fill-forms">Use AI to intelligently fill ATS forms (Workday, Lever, Greenhouse)</label>
+            </div>
+
+            <div class="checkbox-group">
+                <input type="checkbox" id="use-tailored-cv" checked>
+                <label for="use-tailored-cv">Auto-upload tailored CV when applying</label>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="form-group">
+                <label class="form-label">Max Applications Per Day</label>
+                <input type="number" class="form-input" min="1" step="1" value="15" placeholder="15">
+                <div class="form-hint">Safety limit to prevent rate-limiting and detection</div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Delay Between Applications (seconds)</label>
+                <input type="number" class="form-input" min="1" step="1" value="8" placeholder="8">
+                <div class="form-hint">Adds random variation to appear more human-like</div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Job Application Strategy</label>
+                <select class="form-select">
+                    <option value="best-match">Apply to best matches first</option>
+                    <option value="newest-first">Apply to newest jobs first</option>
+                    <option value="oldest-first">Apply to oldest unapplied jobs first</option>
+                </select>
+            </div>
+
+            <div class="alert warning">
+                ⚠️ Auto-apply is a powerful feature. Use responsibly to avoid:
+                <ul style="margin-top: 8px; margin-left: 20px;">
+                    <li>Getting flagged by job sites for bot activity</li>
+                    <li>Applying to unsuitable positions</li>
+                    <li>Overloading your inbox with follow-ups</li>
+                </ul>
+            </div>
+
+            <div class="button-group">
+                <button class="btn btn-primary">💾 Save Bot Settings</button>
+                <button class="btn btn-secondary">🧪 Test on Single Job</button>
+            </div>
         </div>
-        <div class="form-group" style="margin:0;">
-          <label for="naukri_password">Password
-            {% if user.naukri_email %}<span style="font-size:.72rem;color:#9ca3af;">(leave blank to keep)</span>{% endif %}
-          </label>
-          <input type="password" id="naukri_password" name="naukri_password"
-                 placeholder="{% if user.naukri_email %}••••••••{% else %}Naukri password{% endif %}"
-                 autocomplete="new-password">
+
+        <div class="settings-section">
+            <h3>📊 Browser Profile</h3>
+            <p>Manage the persistent Chrome profile used for automation.</p>
+
+            <div class="credential-card connected">
+                <div class="info">
+                    <div class="label">Primary Profile (Production)</div>
+                    <div class="status">✅ Initialized at ~/.../playwright_profile</div>
+                </div>
+                <div class="actions">
+                    <button class="btn btn-secondary">View Profile</button>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Clear Browser Cache</label>
+                <p style="color: #666; font-size: .85rem; margin-bottom: 12px;">Clears cookies and cache to help with bot detection issues. Your login sessions will be reset.</p>
+                <button class="btn btn-danger">🗑 Clear Cache</button>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Reset Profile</label>
+                <p style="color: #666; font-size: .85rem; margin-bottom: 12px;">Start fresh with a new browser profile. You'll need to log back into LinkedIn/Naukri.</p>
+                <button class="btn btn-danger">🔄 Reset Profile</button>
+            </div>
         </div>
-      </div>
+    </div>
 
-      <button type="submit" class="btn btn-primary">🔑 Save Credentials</button>
-    </form>
-  </div>
+    <!-- TAB: NOTIFICATIONS -->
+    <div id="notifications" class="tab-content">
+        <div class="settings-section">
+            <h3>🔔 Email Notifications</h3>
+            <p>Receive updates about your job applications.</p>
 
-  <!-- ── Change Password Card ── -->
-  {% if user.auth_type != 'google' %}
-  <div class="card">
-    <div class="card-title">🔒 Change Password</div>
-    <form method="POST" action="/account-settings" id="pw-form">
-      <input type="hidden" name="action" value="password">
+            <div class="checkbox-group">
+                <input type="checkbox" id="notify-new-jobs" checked>
+                <label for="notify-new-jobs">New matching jobs found</label>
+            </div>
 
-      <div class="form-group">
-        <label for="current_password">Current Password</label>
-        <input type="password" id="current_password" name="current_password"
-               placeholder="Enter current password" required autocomplete="current-password">
-      </div>
+            <div class="checkbox-group">
+                <input type="checkbox" id="notify-applied" checked>
+                <label for="notify-applied">Application submitted successfully</label>
+            </div>
 
-      <div class="form-group">
-        <label for="new_password">New Password</label>
-        <input type="password" id="new_password" name="new_password"
-               placeholder="Min 8 characters" required autocomplete="new-password"
-               oninput="pwStrength(this.value)">
-        <div class="pw-bar-wrap"><div class="pw-bar" id="pw-bar"></div></div>
-        <div class="pw-hint" id="pw-hint">Enter a new password</div>
-      </div>
+            <div class="checkbox-group">
+                <input type="checkbox" id="notify-shortlist">
+                <label for="notify-shortlist">Job marked as shortlisted (manual)</label>
+            </div>
 
-      <div class="form-group">
-        <label for="confirm_password">Confirm New Password</label>
-        <input type="password" id="confirm_password" name="confirm_password"
-               placeholder="Repeat new password" required autocomplete="new-password">
-      </div>
+            <div class="checkbox-group">
+                <input type="checkbox" id="notify-daily">
+                <label for="notify-daily">Daily summary of new jobs and applications</label>
+            </div>
 
-      <button type="submit" class="btn btn-primary btn-sm">🔑 Update Password</button>
-    </form>
-  </div>
-  {% else %}
-  <div class="card" style="opacity:.7;">
-    <div class="card-title">🔒 Change Password</div>
-    <p style="font-size:.87rem;color:#6b7280;">Password management is handled by Google for your account.</p>
-  </div>
-  {% endif %}
+            <div class="divider"></div>
 
-  <!-- ── Danger Zone ── -->
-  <div class="danger-section">
-    <h3>⚠️ Sign Out</h3>
-    <p>This will end your current session.</p>
-    <a href="/logout" class="btn btn-danger btn-sm">🚪 Sign Out</a>
-  </div>
+            <div class="form-group">
+                <label class="form-label">Email Address</label>
+                <input type="email" class="form-input" placeholder="your@email.com" value="">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Digest Frequency</label>
+                <select class="form-select">
+                    <option value="instant">Instant</option>
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                </select>
+            </div>
+
+            <div class="button-group">
+                <button class="btn btn-primary">💾 Save Notification Settings</button>
+            </div>
+        </div>
+
+        <div class="settings-section">
+            <h3>📱 Webhooks & Integrations</h3>
+            <p>Send job data to external services.</p>
+
+            <div class="form-group">
+                <label class="form-label">Slack Webhook URL</label>
+                <input type="url" class="form-input" placeholder="https://hooks.slack.com/..." value="">
+                <div class="form-hint">Get a webhook URL from your Slack workspace settings</div>
+            </div>
+
+            <div class="checkbox-group">
+                <input type="checkbox" id="slack-enable">
+                <label for="slack-enable">Send application notifications to Slack</label>
+            </div>
+
+            <div class="button-group">
+                <button class="btn btn-primary">💾 Save Webhook Settings</button>
+                <button class="btn btn-secondary">🧪 Test Webhook</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB: BILLING -->
+    <div id="billing" class="tab-content">
+        <div class="settings-section">
+            <h3>💳 Billing & Rate Limits</h3>
+            <p>Manage plan limits and upgrade options for daily job searches.</p>
+
+            <div class="credential-card" id="billing-summary-card">
+                <div class="info">
+                    <div class="label">Current Plan</div>
+                    <div class="status" id="billing-plan-status">⏳ Loading...</div>
+                </div>
+                <div class="actions">
+                    <button class="btn btn-secondary" onclick="loadBillingSummary()">🔄 Refresh</button>
+                    <a class="btn btn-primary" href="/billing" style="text-decoration:none;display:inline-flex;align-items:center;">Open Billing Page</a>
+                </div>
+            </div>
+
+            <div class="alert" id="billing-usage-alert">
+                Loading usage information...
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
-function pwStrength(pw) {
-  const bar  = document.getElementById('pw-bar');
-  const hint = document.getElementById('pw-hint');
-  let score = 0;
-  if (pw.length >= 8)  score++;
-  if (pw.length >= 12) score++;
-  if (/[A-Z]/.test(pw)) score++;
-  if (/[0-9]/.test(pw)) score++;
-  if (/[^A-Za-z0-9]/.test(pw)) score++;
-  const levels = [
-    {w:'0%',   bg:'#e5e7eb', label:''},
-    {w:'20%',  bg:'#ef4444', label:'Very weak'},
-    {w:'40%',  bg:'#f97316', label:'Weak'},
-    {w:'60%',  bg:'#eab308', label:'Fair'},
-    {w:'80%',  bg:'#22c55e', label:'Strong'},
-    {w:'100%', bg:'#16a34a', label:'Very strong'},
-  ];
-  const l = levels[Math.min(score, 5)];
-  bar.style.width = l.w;
-  bar.style.background = l.bg;
-  hint.textContent = l.label;
-  hint.style.color = l.bg;
-}
+    function switchTab(tabName, triggerEl = null) {
+        // Hide all tabs
+        document.querySelectorAll('.tab-content').forEach(tab => {
+            tab.classList.remove('active');
+        });
+        // Remove active class from all buttons
+        document.querySelectorAll('.tab-link').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        // Show selected tab
+        document.getElementById(tabName).classList.add('active');
+        // Add active class to clicked button
+        if (triggerEl) {
+            triggerEl.classList.add('active');
+        } else {
+            const btn = document.querySelector(`.tab-link[onclick*="'${tabName}'"]`);
+            if (btn) btn.classList.add('active');
+        }
 
-// Live confirm-password match indicator
-document.getElementById('confirm_password')?.addEventListener('input', function() {
-  const np = document.getElementById('new_password').value;
-  this.style.borderColor = this.value && this.value !== np ? '#ef4444' : '#d1d5db';
-});
+        if (tabName === 'billing') {
+            loadBillingSummary();
+        }
+    }
+
+    function togglePasswordVisibility(inputId) {
+        const input = document.getElementById(inputId);
+        const toggle = event.target;
+        if (input.type === 'password') {
+            input.type = 'text';
+            toggle.textContent = '🙈';
+        } else {
+            input.type = 'password';
+            toggle.textContent = '👁';
+        }
+    }
+
+    function saveApiKey(provider) {
+        const keyInput = document.getElementById('anthropic-key');
+        const key = keyInput.value.trim();
+        const statusDiv = document.getElementById('api-status');
+
+        if (!key) {
+            statusDiv.className = 'status-message error';
+            statusDiv.textContent = '❌ Please enter an API key';
+            return;
+        }
+
+        // Save to localStorage (in production, use secure backend storage)
+        try {
+            localStorage.setItem(`${provider}_api_key`, key);
+            statusDiv.className = 'status-message success';
+            statusDiv.textContent = '✅ API key saved successfully!';
+            setTimeout(() => { statusDiv.style.display = 'none'; }, 3000);
+        } catch (e) {
+            statusDiv.className = 'status-message error';
+            statusDiv.textContent = '❌ Failed to save API key: ' + e.message;
+        }
+    }
+
+    function testApiKey() {
+        alert('🧪 Testing API connection... (Feature coming soon)');
+    }
+
+    function openLinkedInProfile() {
+        // Open in the same tab so user is not pushed into a new popup window.
+        window.location.href = 'https://www.linkedin.com/feed/';
+    }
+
+    function loadBillingSummary() {
+        const planEl = document.getElementById('billing-plan-status');
+        const alertEl = document.getElementById('billing-usage-alert');
+        if (!planEl || !alertEl) return;
+
+        planEl.textContent = '⏳ Loading...';
+        alertEl.textContent = 'Loading usage information...';
+
+        fetch('/api/usage-status', { credentials: 'same-origin' })
+            .then(r => {
+                if (!r.ok || r.redirected) {
+                    if (r.redirected) window.location.href = '/login';
+                    throw new Error('Unable to load usage');
+                }
+                return r.json();
+            })
+            .then(data => {
+                const plan = String(data.plan || 'free');
+                planEl.textContent = `${plan.toUpperCase()} plan`;
+                if (data.blocked) {
+                    alertEl.innerHTML = `⚠️ Daily limit reached: <strong>${data.daily_usage}/${data.daily_limit}</strong>. Upgrade to continue searching today.`;
+                } else {
+                    alertEl.innerHTML = `✅ Daily usage: <strong>${data.daily_usage}/${data.daily_limit}</strong>. Remaining today: <strong>${data.remaining}</strong>.`;
+                }
+            })
+            .catch(() => {
+                planEl.textContent = 'Error loading plan';
+                alertEl.textContent = 'Could not load billing usage. Please refresh.';
+            });
+    }
+
+    // ── Naukri account status ──────────────────────────────────────────────
+    function checkNaukriStatus() {
+        const statusEl = document.getElementById('naukri-status-text');
+        const card     = document.getElementById('naukri-card');
+        statusEl.textContent = '⏳ Checking…';
+        fetch('/api/naukri-status', { credentials: 'same-origin' })
+            .then(r => {
+                if (!r.ok || r.redirected) {
+                    if (r.redirected) window.location.href = '/login';
+                    throw new Error('Not authenticated');
+                }
+                return r.json();
+            })
+            .then(data => {
+                if (data.connected) {
+                    statusEl.textContent = '✅ Session Active';
+                    card.classList.add('connected');
+                    document.getElementById('naukri-setup-btn').textContent = '🔄 Re-Login';
+                } else {
+                    statusEl.textContent = '❌ Not logged in';
+                    card.classList.remove('connected');
+                    document.getElementById('naukri-setup-btn').textContent = '🔑 Setup Login';
+                }
+            })
+            .catch(err => {
+                if (String(err).includes('Not authenticated')) return;
+                statusEl.textContent = '⚠️ Could not check status';
+            });
+    }
+
+    function openNaukriLogin() {
+        const btn = document.getElementById('naukri-setup-btn');
+        btn.disabled = true;
+        btn.textContent = '⏳ Opening browser…';
+        fetch('/api/naukri-open-login', { method: 'POST', credentials: 'same-origin' })
+            .then(r => {
+                if (!r.ok || r.redirected) {
+                    btn.disabled = false;
+                    btn.textContent = '🔑 Setup Login';
+                    if (r.redirected) { window.location.href = '/login'; return; }
+                    return r.text().then(t => { throw new Error('Server error: ' + t.substring(0, 120)); });
+                }
+                return r.json();
+            })
+            .then(data => {
+                if (!data) return;
+                btn.disabled = false;
+                btn.textContent = '🔑 Setup Login';
+                if (data.status === 'launched') {
+                    const note = document.createElement('div');
+                    note.className = 'alert';
+                    note.style.marginTop = '10px';
+                    note.innerHTML = '🌐 <strong>Chrome opened.</strong> Log in to Naukri in that window, then close it. Click <strong>🔄 Refresh</strong> to confirm your session.';
+                    document.getElementById('naukri-card').insertAdjacentElement('afterend', note);
+                    setTimeout(() => note.remove(), 20000);
+                } else {
+                    alert('Failed to open browser: ' + (data.message || 'Unknown error'));
+                }
+            })
+            .catch(err => {
+                btn.disabled = false;
+                btn.textContent = '🔑 Setup Login';
+                alert('Error: ' + err);
+            });
+    }
+
+    // Load saved settings on page load
+    window.addEventListener('DOMContentLoaded', function() {
+        const savedKey = localStorage.getItem('anthropic_api_key');
+        if (savedKey) {
+            document.getElementById('anthropic-key').value = savedKey;
+        }
+        // Auto-check Naukri status
+        checkNaukriStatus();
+
+        // Open billing tab directly when arriving with #billing
+        if (window.location.hash === '#billing') {
+            switchTab('billing');
+        }
+    });
 </script>
+
 </body>
 </html>
