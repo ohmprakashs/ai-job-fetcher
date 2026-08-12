@@ -327,6 +327,7 @@ def index():
         now_date=now_date,
         usage_daily_limit=limit_state["daily_limit"],
         usage_daily_count=limit_state["daily_usage"],
+        usage_remaining=limit_state["remaining"],
         usage_plan=limit_state["plan"],
         usage_blocked=limit_state["blocked"],
         rate_limit_message=rate_limit_message,

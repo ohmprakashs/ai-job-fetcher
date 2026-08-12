@@ -704,14 +704,14 @@
 <div style="background:#fff1f2;border-bottom:1px solid #fda4af;padding:10px 24px;">
     <div style="max-width:1280px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
         <div style="color:#9f1239;font-size:.9rem;font-weight:600;">
-            {{ rate_limit_message }}
+            {{ rate_limit_message }} Free plan exhausted for today.
         </div>
         <div style="display:flex;gap:10px;align-items:center;">
             {% if payment_link_url %}
                 <a href="{{ payment_link_url }}?user={{ session.get('username','') }}" target="_blank" rel="noopener"
                    style="text-decoration:none;background:#0a66c2;color:#fff;padding:6px 12px;border-radius:8px;font-size:.82rem;font-weight:700;">Upgrade</a>
             {% else %}
-                <a href="/billing" style="text-decoration:none;background:#0a66c2;color:#fff;padding:6px 12px;border-radius:8px;font-size:.82rem;font-weight:700;">View Billing</a>
+                <a href="/account-settings#billing" style="text-decoration:none;background:#0a66c2;color:#fff;padding:6px 12px;border-radius:8px;font-size:.82rem;font-weight:700;">View Upgrade Options</a>
             {% endif %}
         </div>
     </div>
@@ -720,10 +720,43 @@
 <div style="background:#eff6ff;border-bottom:1px solid #bfdbfe;padding:8px 24px;color:#1d4ed8;font-size:.82rem;">
     <div style="max-width:1280px;margin:0 auto;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;">
         <span>Plan: <strong style="text-transform:capitalize;">{{ usage_plan }}</strong></span>
-        <span>Daily searches: <strong>{{ usage_daily_count }}</strong> / <strong>{{ usage_daily_limit }}</strong></span>
+        <span>Daily searches: <strong>{{ usage_daily_count }}</strong> / <strong>{{ usage_daily_limit }}</strong>{% if usage_plan == 'free' and usage_remaining <= 1 %} <span style="color:#b45309;font-weight:700;">• Upgrade soon</span>{% endif %}</span>
     </div>
 </div>
 {% endif %}
+
+<div id="upgrade-modal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.62);z-index:2200;align-items:center;justify-content:center;padding:20px;">
+    <div style="width:min(520px,100%);background:#fff;border-radius:18px;box-shadow:0 30px 90px rgba(2,6,23,.35);overflow:hidden;">
+        <div style="padding:22px 24px 14px;background:linear-gradient(135deg,#fff7ed,#eff6ff);border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;gap:12px;align-items:flex-start;">
+            <div>
+                <div style="font-size:.78rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#b45309;">Plan Limit Reached</div>
+                <h3 style="margin-top:6px;font-size:1.35rem;color:#0f172a;">Upgrade to keep searching today</h3>
+            </div>
+            <button type="button" id="upgrade-modal-close" style="border:none;background:transparent;font-size:1.2rem;cursor:pointer;color:#64748b;">✕</button>
+        </div>
+        <div style="padding:22px 24px;">
+            <p style="color:#334155;line-height:1.55;margin-bottom:16px;">Your free plan has used <strong>{{ usage_daily_count }}</strong> of <strong>{{ usage_daily_limit }}</strong> daily searches. Upgrade to unlock a higher daily quota and continue fetching jobs now.</p>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px;">
+                <div style="border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px;background:#f8fafc;">
+                    <div style="font-size:.78rem;color:#64748b;">Current</div>
+                    <div style="font-size:1.05rem;font-weight:800;color:#0f172a;text-transform:capitalize;">{{ usage_plan }} plan</div>
+                </div>
+                <div style="border:1px solid #bfdbfe;border-radius:12px;padding:14px 16px;background:#eff6ff;">
+                    <div style="font-size:.78rem;color:#1d4ed8;">After upgrade</div>
+                    <div style="font-size:1.05rem;font-weight:800;color:#0a66c2;">More daily searches</div>
+                </div>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+                {% if payment_link_url %}
+                    <a href="{{ payment_link_url }}?user={{ session.get('username','') }}" target="_blank" rel="noopener" style="text-decoration:none;background:#0a66c2;color:#fff;padding:10px 16px;border-radius:10px;font-size:.9rem;font-weight:800;">💳 Upgrade Plan</a>
+                {% else %}
+                    <a href="/account-settings#billing" style="text-decoration:none;background:#0a66c2;color:#fff;padding:10px 16px;border-radius:10px;font-size:.9rem;font-weight:800;">Open Billing in Settings</a>
+                {% endif %}
+                <button type="button" id="upgrade-modal-later" style="border:1px solid #cbd5e1;background:#fff;color:#334155;padding:10px 16px;border-radius:10px;font-size:.9rem;font-weight:700;cursor:pointer;">Maybe later</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- ═══════════ MAIN FORM ═══════════ -->
 <form method="post" enctype="multipart/form-data" id="main-form">
@@ -772,9 +805,9 @@
                 <input type="hidden" name="location" id="location-hidden"
                     value="{{ location_filter if location_filter else '' }}">
             </div>
-            <button type="submit" class="sb-btn" id="fetch-btn">
+            <button type="submit" class="sb-btn" id="fetch-btn" {% if usage_blocked %}disabled title="Free plan limit reached. Upgrade to continue."{% endif %}>
                 <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-                Search Jobs
+                {% if usage_blocked %}Upgrade to Continue{% else %}Search Jobs{% endif %}
             </button>
         </div>
     </div>
@@ -1070,6 +1103,40 @@ function toast(msg, type) {
     setTimeout(function(){ el.classList.add('hide'); setTimeout(function(){ el.remove(); }, 300); }, 3200);
 }
 
+// ── Upgrade Prompt ───────────────────────────────────
+var USAGE_BLOCKED = {{ 'true' if usage_blocked else 'false' }};
+
+function openUpgradeModal() {
+    var modal = document.getElementById('upgrade-modal');
+    if (!modal) return;
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+}
+
+function closeUpgradeModal() {
+    var modal = document.getElementById('upgrade-modal');
+    if (!modal) return;
+    modal.style.display = 'none';
+    document.body.style.overflow = '';
+}
+
+(function(){
+    var modal = document.getElementById('upgrade-modal');
+    if (!modal) return;
+
+    var closeBtn = document.getElementById('upgrade-modal-close');
+    var laterBtn = document.getElementById('upgrade-modal-later');
+    if (closeBtn) closeBtn.addEventListener('click', closeUpgradeModal);
+    if (laterBtn) laterBtn.addEventListener('click', closeUpgradeModal);
+    modal.addEventListener('click', function(e){
+        if (e.target === modal) closeUpgradeModal();
+    });
+
+    if (USAGE_BLOCKED) {
+        setTimeout(openUpgradeModal, 250);
+    }
+})();
+
 // ── Resume Upload ─────────────────────────────────────
 (function(){
     var input    = document.getElementById('resume');
@@ -1186,6 +1253,14 @@ function toast(msg, type) {
     }
 
     form.addEventListener('submit', function(e){
+        if (USAGE_BLOCKED) {
+            e.preventDefault();
+            hidePageLoading();
+            openUpgradeModal();
+            toast('Free plan exhausted for today. Upgrade to continue.', 'error');
+            return;
+        }
+
         // Ensure typed-but-not-confirmed chips are included in submit payload.
         commitPendingChipInput('desig-type-input', 'designation-hidden', 'ac-designation', 'designations');
         commitPendingChipInput('skill-type-input', 'skills-hidden', 'ac-skills', 'skills');
